@@ -653,7 +653,61 @@ dialog::backdrop { background: transparent; }
   border-radius: var(--radius);
 }
 #share-pin { font: 600 1.45rem/1.2 ui-monospace, monospace; letter-spacing: .23em; padding-inline-start: .23em; }
-#share-code { text-transform: uppercase; letter-spacing: .12em; }
+.share-pin-entry {
+  min-inline-size: 0;
+  inline-size: min(100%, 236px);
+  margin: 0 auto;
+  padding: 0;
+  border: 0;
+}
+.share-pin-entry legend { margin-inline: auto; padding: 0 0 5px; }
+.share-pin-cells { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--gap); }
+.share-pin-cell {
+  padding: 0;
+  font: 600 1.125rem ui-monospace, monospace;
+  text-align: center;
+  text-transform: uppercase;
+}
+.share-permissions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--gap);
+}
+.share-permissions button { color: var(--muted); }
+.share-permissions button[aria-pressed="true"] {
+  color: var(--text);
+  background: var(--selected);
+  border-color: var(--edge-strong);
+}
+@media (forced-colors: active) {
+  .share-permissions button[aria-pressed="true"] { outline: 2px solid Highlight; outline-offset: -3px; }
+}
+#share-peers { display: grid; gap: var(--gap); }
+.share-peer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--gap);
+}
+.share-peer button { inline-size: auto; block-size: 32px; font-size: .8125rem; }
+.terminal-content { position: relative; }
+.peer-cursors { position: absolute; inset: 0 auto auto 0; z-index: 2; overflow: hidden; pointer-events: none; }
+.peer-cursor {
+  position: absolute;
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  color: var(--peer-color);
+}
+.peer-cursor svg { inline-size: 15px; block-size: 17px; fill: currentColor; stroke: #000; stroke-width: 1; }
+.peer-cursor span {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--peer-color);
+  color: #000;
+  font: 600 10px/1.35 system-ui, sans-serif;
+  white-space: nowrap;
+}
 #share-camera {
   inline-size: 100%;
   block-size: clamp(100px, 24dvh, 188px);
@@ -673,6 +727,7 @@ dialog::backdrop { background: transparent; }
   <symbol id="icon-minus" viewBox="0 0 16 16"><path d="M3.5 8h9" /></symbol>
   <symbol id="icon-qr" viewBox="0 0 16 16"><path stroke-linejoin="round" d="M2 2h4v4H2zM10 2h4v4h-4zM2 10h4v4H2zM10 9v2h2v3M14 9v2M9 14h.01M14 14h.01" /></symbol>
   <symbol id="icon-close" viewBox="0 0 16 16"><path d="m4 4 8 8m0-8-8 8" /></symbol>
+  <symbol id="icon-pointer" viewBox="0 0 16 18"><path d="M2 1v14l3-3 3 5 3-2-3-5h5z" /></symbol>
 </svg>
 <div id="app">
   <div id="controls">
@@ -807,11 +862,16 @@ dialog::backdrop { background: transparent; }
       </div>
       <div id="share-approval" hidden>
         <p id="share-approval-detail" class="share-hint"></p>
+        <div id="share-approval-permissions" class="share-permissions" role="group" aria-label="Allow this peer to">
+          <button class="modal-button" data-permission="view" type="button" aria-pressed="true">View</button>
+          <button class="modal-button" data-permission="write" type="button" aria-pressed="false">Write</button>
+        </div>
         <div class="share-controls">
           <button id="share-decline" class="modal-button" type="button">Decline</button>
           <button id="share-approve" class="modal-button primary" type="button">Approve</button>
         </div>
       </div>
+      <div id="share-peers" aria-label="Connected peers" hidden></div>
     </div>
     <div id="share-connect-panel" class="share-pane" role="tabpanel" aria-labelledby="share-connect-tab" hidden>
       <button id="share-scan" class="modal-button" type="button">Scan with camera</button>
@@ -824,13 +884,28 @@ dialog::backdrop { background: transparent; }
           <option value="give">Share my terminal</option>
         </select>
         <select id="share-source" class="field" aria-label="Your terminal to share" hidden></select>
-        <input id="share-code" class="field" type="text" aria-label="Four-character PIN" placeholder="4-character PIN"
-            autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="4">
+        <div id="share-offer-permissions" class="share-permissions" role="group" aria-label="Allow this peer to" hidden>
+          <button class="modal-button" data-permission="view" type="button" aria-pressed="true">View</button>
+          <button class="modal-button" data-permission="write" type="button" aria-pressed="false">Write</button>
+        </div>
+        <fieldset class="share-pin-entry">
+          <legend class="share-hint">4-character PIN</legend>
+          <div class="share-pin-cells">
+            <input class="field share-pin-cell" type="text" aria-label="PIN character 1 of 4"
+                autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="1" enterkeyhint="next">
+            <input class="field share-pin-cell" type="text" aria-label="PIN character 2 of 4"
+                autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="1" enterkeyhint="next">
+            <input class="field share-pin-cell" type="text" aria-label="PIN character 3 of 4"
+                autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="1" enterkeyhint="next">
+            <input class="field share-pin-cell" type="text" aria-label="PIN character 4 of 4"
+                autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="1" enterkeyhint="go">
+          </div>
+        </fieldset>
         <button id="share-verify" class="modal-button primary" type="submit" disabled>Verify PIN</button>
       </form>
     </div>
     <p id="share-status" class="share-hint" role="status" hidden></p>
-    <button id="share-stop" class="modal-button" type="button" hidden>Stop sharing</button>
+    <button id="share-stop" class="modal-button" type="button" hidden>Leave shared terminal</button>
   </section>
 </dialog>
 <script id="roomQrEncoder">
@@ -1131,16 +1206,17 @@ ${o.stack}`),i.reject(a)):i.resolve(B))}});return c.requestSubject=e,this.protoc
   const encoder = new TextEncoder();
   const decoder = new TextDecoder('utf-8', {fatal: true});
   const relay = 'wss://demo.nats.io:8443';
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  const pinPattern = /^[A-HJ-NP-Z2-9]{4}$/;
-  const roomPattern = /^v1\.([A-Za-z0-9_-]{22})\.([A-Za-z0-9_-]{87})$/;
+  const version = 'v2';
+  const pinAlphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const pinPattern = new RegExp('^[' + pinAlphabet + ']{4}$');
+  const roomPattern = /^([A-Za-z0-9_-]{22})\.([A-Za-z0-9_-]{87})$/;
   const lifetime = 120000;
   // Keep-Alive packets are authenticated and remain active only after approval.
   const heartbeat = 8000;
   const maxFrame = 262144;
   const maxQueue = 1048576;
   const kind = Object.freeze({join: 1, allow: 2, reject: 3, screen: 4, input: 5,
-    output: 6, resize: 7, ping: 8, end: 9});
+    output: 6, resize: 7, ping: 8, end: 9, cursor: 10});
 
   function encodeBytes(bytes) {
     return btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
@@ -1155,8 +1231,10 @@ ${o.stack}`),i.reject(a)):i.resolve(B))}});return c.requestSubject=e,this.protoc
   const randomId = () => encodeBytes(crypto.getRandomValues(new Uint8Array(16)));
   const generateKey = () => crypto.subtle.generateKey({name: 'ECDH', namedCurve: 'P-256'}, false, ['deriveBits']);
   const publicKey = async keys => encodeBytes(new Uint8Array(await crypto.subtle.exportKey('raw', keys.publicKey)));
-  const route = room => 'robit.tty.share.v1.' + room;
-  const newPIN = () => Array.from(crypto.getRandomValues(new Uint8Array(4)), value => alphabet[value & 31]).join('');
+  const route = room => 'robit.tty.share.' + version + '.' + room;
+  const newPIN = () => Array.from(crypto.getRandomValues(new Uint8Array(4)), value => pinAlphabet[value & 31]).join('');
+  const hasPermissions = value => Boolean(value && typeof value.view === 'boolean' &&
+    typeof value.write === 'boolean' && (value.view || value.write));
 
   function parseInvite(value) {
     if (typeof value !== 'string' || value.length > 2048) return null;
@@ -1165,7 +1243,9 @@ ${o.stack}`),i.reject(a)):i.resolve(B))}});return c.requestSubject=e,this.protoc
       // An invite supplies a key and room only. Never navigate to or fetch the scanned address.
       if ((url.protocol !== 'https:' && url.origin !== location.origin) || url.username || url.password) return null;
       const hash = new URLSearchParams(url.hash.slice(1));
-      const match = roomPattern.exec(hash.get('ttyshare') || '');
+      const room = hash.get('ttyshare') || '';
+      if (!room.startsWith(version + '.')) return null;
+      const match = roomPattern.exec(room.slice(version.length + 1));
       if (!match || decodeBytes(match[2])[0] !== 4 || encodeBytes(decodeBytes(match[1])) !== match[1]
           || encodeBytes(decodeBytes(match[2])) !== match[2]) return null;
       return {room: match[1], hostKey: match[2]};
@@ -1182,7 +1262,7 @@ ${o.stack}`),i.reject(a)):i.resolve(B))}});return c.requestSubject=e,this.protoc
     new Uint8Array(secret).fill(0);
     const derive = (label, algorithm, operations) => crypto.subtle.deriveKey({
       name: 'HKDF', hash: 'SHA-256', salt: decodeBytes(room),
-      info: pack(['tty-share-v1', room, attempt, hostKey, guestKey, label])
+      info: pack(['tty-share', version, room, attempt, hostKey, guestKey, label])
     }, base, algorithm, false, operations);
     const gcm = {name: 'AES-GCM', length: 256};
     // Split keys by traffic direction and purpose. The short PIN is never an encryption key.
@@ -1194,8 +1274,8 @@ ${o.stack}`),i.reject(a)):i.resolve(B))}});return c.requestSubject=e,this.protoc
     return {outgoing, incoming, proof};
   }
 
-  function pinProofLink(room, attempt, mode, pin) {
-    return pack(['tty-share-pin-v1', room, attempt, mode, pin]);
+  function pinProofLink(room, attempt, mode, permissions, pin) {
+    return pack(['tty-share-pin', version, room, attempt, mode, permissions ? [permissions.view, permissions.write] : null, pin]);
   }
 
   async function openRelay() {
@@ -1228,7 +1308,7 @@ ${o.stack}`),i.reject(a)):i.resolve(B))}});return c.requestSubject=e,this.protoc
     cipher(seq, host) {
       const iv = new Uint8Array(12);
       new DataView(iv.buffer).setUint32(8, seq);
-      return {name: 'AES-GCM', iv, additionalData: pack(['tty-share-frame-v1', this.invite.room, this.attempt, host, seq])};
+      return {name: 'AES-GCM', iv, additionalData: pack(['tty-share-frame', version, this.invite.room, this.attempt, host, seq])};
     }
 
     send(type, bytes = new Uint8Array()) {
@@ -1334,7 +1414,7 @@ ${o.stack}`),i.reject(a)):i.resolve(B))}});return c.requestSubject=e,this.protoc
     const pin = newPIN();
     const nc = await openRelay();
     const url = new URL(location.pathname, location.origin);
-    url.hash = 'ttyshare=v1.' + invite.room + '.' + invite.hostKey;
+    url.hash = 'ttyshare=' + version + '.' + invite.room + '.' + invite.hostKey;
     const seen = new Set();
     const expires = Date.now() + lifetime;
     let pending = false;
@@ -1358,7 +1438,7 @@ ${o.stack}`),i.reject(a)):i.resolve(B))}});return c.requestSubject=e,this.protoc
         return;
       }
       const header = decoder.decode(frame.subarray(0, 109));
-      const match = roomPattern.exec('v1.' + header.slice(0, 22) + '.' + header.slice(22));
+      const match = roomPattern.exec(header.slice(0, 22) + '.' + header.slice(22));
       if (!match || decodeBytes(match[2])[0] !== 4 || seen.has(match[1])) return;
       const [, attempt, guestKey] = match;
       try {
@@ -1367,11 +1447,12 @@ ${o.stack}`),i.reject(a)):i.resolve(B))}});return c.requestSubject=e,this.protoc
         const body = await candidate.decrypt(frame.subarray(109));
         if (closed) return;
         if (body?.[0] !== kind.join) return;
-        const {mode, proof} = unpack(body.subarray(1));
+        const {mode, proof, permissions} = unpack(body.subarray(1));
         if (!['request', 'give'].includes(mode) || typeof proof !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(proof)) return;
+        if (mode === 'give' ? !hasPermissions(permissions) : permissions !== null) return;
         seen.add(attempt);
         const valid = await crypto.subtle.verify('HMAC', keys.proof, decodeBytes(proof),
-          pinProofLink(invite.room, attempt, mode, pin));
+          pinProofLink(invite.room, attempt, mode, permissions, pin));
         if (closed) return;
         if (!valid) {
           await candidate.send(kind.reject);
@@ -1380,7 +1461,7 @@ ${o.stack}`),i.reject(a)):i.resolve(B))}});return c.requestSubject=e,this.protoc
         pair = candidate;
         subscription.unsubscribe();
         pair.listen();
-        onRequest(mode, pair, () => {
+        onRequest(mode, permissions, pair, () => {
           if (closed || Date.now() >= expires) {
             close('The invite has expired.');
             return false;
@@ -1412,12 +1493,12 @@ ${o.stack}`),i.reject(a)):i.resolve(B))}});return c.requestSubject=e,this.protoc
     return {pin, url: url.href, close, expires};
   }
 
-  async function joinInvite(invite, pin, mode, {onReady, onPacket, onClose}) {
+  async function joinInvite(invite, pin, mode, permissions, {onReady, onPacket, onClose}) {
     const keyPair = await generateKey();
     const attempt = randomId();
     const guestKey = await publicKey(keyPair);
     const keys = await deriveKeys(invite, attempt, guestKey, keyPair, false);
-    const proof = await crypto.subtle.sign('HMAC', keys.proof, pinProofLink(invite.room, attempt, mode, pin));
+    const proof = await crypto.subtle.sign('HMAC', keys.proof, pinProofLink(invite.room, attempt, mode, permissions, pin));
     const nc = await openRelay();
     let approved = false;
     const pair = new Pair(nc, invite, attempt, guestKey, keys, false, (type, bytes) => {
@@ -1440,14 +1521,14 @@ ${o.stack}`),i.reject(a)):i.resolve(B))}});return c.requestSubject=e,this.protoc
     try {
       pair.listen();
       await nc.flush();
-      pair.send(kind.join, pack({mode, proof: encodeBytes(new Uint8Array(proof))}));
+      pair.send(kind.join, pack({mode, permissions, proof: encodeBytes(new Uint8Array(proof))}));
     } catch (_) {
       pair.close('The sharing relay disconnected.', false);
     }
     return pair;
   }
 
-  window.TTYShare = {kind, pack, unpack, parseInvite, pinPattern, createInvite, joinInvite};
+  window.TTYShare = {kind, pack, unpack, parseInvite, pinAlphabet, pinPattern, hasPermissions, createInvite, joinInvite};
 })();
 </script>
 <script>var fe={exports:{}},pe;function be(){return pe||(pe=1,(function(ce,Se){(function(ie,Y){ce.exports=Y()})(globalThis,(()=>(()=>{var ie={4567:function(O,r,a){var l=this&&this.__decorate||function(e,t,o,f){var u,p=arguments.length,c=p<3?t:f===null?f=Object.getOwnPropertyDescriptor(t,o):f;if(typeof Reflect=="object"&&typeof Reflect.decorate=="function")c=Reflect.decorate(e,t,o,f);else for(var m=e.length-1;m>=0;m--)(u=e[m])&&(c=(p<3?u(c):p>3?u(t,o,c):u(t,o))||c);return p>3&&c&&Object.defineProperty(t,o,c),c},_=this&&this.__param||function(e,t){return function(o,f){t(o,f,e)}};Object.defineProperty(r,"__esModule",{value:!0}),r.AccessibilityManager=void 0;const n=a(9042),d=a(9924),v=a(844),g=a(4725),h=a(2585),i=a(3656);let s=r.AccessibilityManager=class extends v.Disposable{constructor(e,t,o,f){super(),this._terminal=e,this._coreBrowserService=o,this._renderService=f,this._rowColumns=new WeakMap,this._liveRegionLineCount=0,this._charsToConsume=[],this._charsToAnnounce="",this._accessibilityContainer=this._coreBrowserService.mainDocument.createElement("div"),this._accessibilityContainer.classList.add("xterm-accessibility"),this._rowContainer=this._coreBrowserService.mainDocument.createElement("div"),this._rowContainer.setAttribute("role","list"),this._rowContainer.classList.add("xterm-accessibility-tree"),this._rowElements=[];for(let u=0;u<this._terminal.rows;u++)this._rowElements[u]=this._createAccessibilityTreeNode(),this._rowContainer.appendChild(this._rowElements[u]);if(this._topBoundaryFocusListener=u=>this._handleBoundaryFocus(u,0),this._bottomBoundaryFocusListener=u=>this._handleBoundaryFocus(u,1),this._rowElements[0].addEventListener("focus",this._topBoundaryFocusListener),this._rowElements[this._rowElements.length-1].addEventListener("focus",this._bottomBoundaryFocusListener),this._refreshRowsDimensions(),this._accessibilityContainer.appendChild(this._rowContainer),this._liveRegion=this._coreBrowserService.mainDocument.createElement("div"),this._liveRegion.classList.add("live-region"),this._liveRegion.setAttribute("aria-live","assertive"),this._accessibilityContainer.appendChild(this._liveRegion),this._liveRegionDebouncer=this.register(new d.TimeBasedDebouncer(this._renderRows.bind(this))),!this._terminal.element)throw new Error("Cannot enable accessibility before Terminal.open");this._terminal.element.insertAdjacentElement("afterbegin",this._accessibilityContainer),this.register(this._terminal.onResize((u=>this._handleResize(u.rows)))),this.register(this._terminal.onRender((u=>this._refreshRows(u.start,u.end)))),this.register(this._terminal.onScroll((()=>this._refreshRows()))),this.register(this._terminal.onA11yChar((u=>this._handleChar(u)))),this.register(this._terminal.onLineFeed((()=>this._handleChar(`
@@ -1534,11 +1615,12 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   const shareDialog = $('share-dialog');
   const sharing = window.TTYShare;
   const shareTypes = sharing.kind;
+  const maxSharePeers = 6;
   const shareCamera = $('share-camera');
   const shareLink = $('share-link');
   const shareMode = $('share-mode');
   const shareSource = $('share-source');
-  const shareCode = $('share-code');
+  const sharePinFields = [...shareDialog.querySelectorAll('.share-pin-cell')];
   const statRows = new Map();
   const traffic = new Map();
   let statsTimer = 0;
@@ -1615,7 +1697,8 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     for (const session of sessions) {
       const {label, state, qr, detail} = statRows.get(session) || addStatsRow(session);
       label.textContent = session.tab.textContent;
-      state.textContent = session.share ? (session.guest ? 'Guest' : 'Sharing') : statusText[session.state];
+      state.textContent = session.share ? permissionLabel(session.share.permissions)
+        : session.shares.size ? 'Sharing · ' + session.shares.size : statusText[session.state];
       state.dataset.online = String(session.state === 'online');
       qr.hidden = session.state !== 'online';
       const {rx, tx, started, ended, handshake} = session.stats;
@@ -1649,14 +1732,50 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   }
 
   function canOffer(session) {
-    return Boolean(session && sessions.includes(session) && !session.guest && !session.share
+    return Boolean(session && sessions.includes(session) && !session.guest && session.shares.size < maxSharePeers
       && session.state === 'online' && session.socket?.readyState === WebSocket.OPEN);
+  }
+
+  function defaultPermissions() { return {view: true, write: false}; }
+
+  function permissionLabel({view, write}) {
+    return view ? (write ? 'View + write' : 'View only') : 'Write only';
+  }
+
+  function renderPermissions(group, permissions, disabled = false) {
+    for (const button of group.querySelectorAll('button')) {
+      button.setAttribute('aria-pressed', String(permissions[button.dataset.permission]));
+      button.disabled = disabled;
+    }
+  }
+
+  function renderSharePeers(session) {
+    const list = $('share-peers');
+    list.hidden = !session?.shares.size;
+    list.replaceChildren(...Array.from(session?.shares || [], flow => {
+      const row = document.createElement('div');
+      const label = document.createElement('span');
+      const revoke = document.createElement('button');
+      row.className = 'share-peer';
+      label.className = 'share-hint';
+      label.textContent = 'Peer ' + flow.peerId + ' · ' + permissionLabel(flow.permissions);
+      revoke.className = 'modal-button share-revoke';
+      revoke.type = 'button';
+      revoke.textContent = 'End';
+      revoke.setAttribute('aria-label', 'End sharing with peer ' + flow.peerId);
+      revoke.addEventListener('click', () => {
+        closeShare(flow, 'Terminal sharing ended.');
+        (list.querySelector('button') || $('share-generate')).focus({preventScroll: true});
+      });
+      row.append(label, revoke);
+      return row;
+    }));
   }
 
   function renderShare() {
     if (!shareView) return;
     const {subject, flow, tab} = shareView;
-    const link = subject?.share || (flow?.approved && !flow.ended ? flow : null);
+    const link = subject?.share || (flow?.approved && !flow.ended && !flow.owner ? flow : null);
     const pending = flow && !flow.ended && !flow.approved;
     const inviting = pending && flow.side === 'host';
     const awaitingApproval = inviting && Boolean(flow.pair);
@@ -1669,25 +1788,38 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     $('share-panel').hidden = tab !== 'share' || Boolean(link);
     $('share-connect-panel').hidden = tab !== 'connect' || Boolean(link);
     $('share-generate').hidden = Boolean(inviting);
+    $('share-generate').disabled = (subject?.shares.size || 0) >= maxSharePeers;
+    $('share-generate').textContent = subject?.shares.size ? 'Invite another peer' : 'Create invite';
     $('share-invite').hidden = !invite;
     if (!invite) {
       $('share-qr').removeAttribute('src');
       $('share-pin').textContent = '';
     }
     $('share-approval').hidden = !awaitingApproval;
+    const approval = $('share-approval-permissions');
+    approval.hidden = !awaitingApproval || flow.mode !== 'request';
+    if (!approval.hidden) renderPermissions(approval, flow.permissions);
+    $('share-approve').disabled = Boolean(awaitingApproval && !sharing.hasPermissions(flow.permissions));
     $('share-stop').hidden = !link;
-    $('share-stop').textContent = link?.owner ? 'Stop sharing' : 'Leave shared terminal';
+    renderSharePeers(subject);
     $('share-invite-hint').hidden = Boolean(inviting);
-    $('share-invite-hint').textContent = canOffer(subject)
-      ? 'Share a terminal you’ve signed in to. The approved peer can see its screen and type in it.'
-      : 'Create an invite to receive a terminal from another device.';
+    $('share-invite-hint').textContent = $('share-generate').disabled ? 'This terminal has reached its six-peer limit.'
+      : canOffer(subject) ? 'Share a terminal you’ve signed in to. Choose what the peer can do when you approve.'
+        : 'Create an invite to receive a terminal from another device.';
     const joining = pending && flow.side === 'guest';
+    const offering = shareMode.value === 'give';
     $('share-verify').disabled = Boolean(joining) || !sharing.parseInvite(shareLink.value)
-      || !sharing.pinPattern.test(shareCode.value) || (shareMode.value === 'give' && !canOffer(getShareSource()));
+      || !sharing.pinPattern.test(sharePinValue()) || (offering && (!canOffer(getShareSource())
+        || !sharing.hasPermissions(shareView.offerPermissions)));
     $('share-verify').textContent = joining ? 'Waiting for approval…'
       : shareMode.value === 'give' ? 'Verify PIN and offer terminal' : 'Verify PIN';
-    for (const control of [shareLink, shareMode, shareSource, shareCode, $('share-scan')]) control.disabled = Boolean(joining);
+    for (const control of [shareLink, shareMode, shareSource, ...sharePinFields, $('share-scan')]) {
+      control.disabled = Boolean(joining);
+    }
     shareSource.hidden = shareMode.value !== 'give';
+    const offer = $('share-offer-permissions');
+    offer.hidden = !offering;
+    if (offering) renderPermissions(offer, shareView.offerPermissions, Boolean(joining));
   }
 
   function getShareSource() {
@@ -1754,6 +1886,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
           stopCamera();
           showShareStatus('Invite scanned. Choose what to share, then enter the PIN.');
           renderShare();
+          if (!mobile.matches) sharePinFields[0].focus({preventScroll: true});
           return;
         }
       }
@@ -1766,19 +1899,20 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     if (shareDialog.open || connectDialog.open || closeDialog.open) return;
     showStats(false);
     const flow = subject?.share || null;
-    shareView = {subject, trigger, tab, flow};
+    shareView = {subject, trigger, tab, flow, offerPermissions: defaultPermissions()};
     shareLink.value = invite;
-    shareCode.value = '';
+    clearSharePin();
     shareMode.value = 'request';
     shareSource.replaceChildren();
     updateShareSources(subject);
-    showShareStatus(flow ? (flow.owner ? 'An approved peer can view and type in this terminal.'
-      : 'You are connected to a shared terminal.') : '');
+    showShareStatus(flow ? 'Your access is ' + permissionLabel(flow.permissions).toLowerCase() + '.' : '');
     renderShare();
     showDialog(shareDialog);
-    if (invite) showShareStatus('Enter the PIN from the person who created the invite.');
-    else if (tab === 'connect') scanInvite();
-    else if (!flow && canOffer(subject)) startInvite();
+    if (invite) {
+      showShareStatus('Enter the PIN from the person who created the invite.');
+      if (!mobile.matches) sharePinFields[0].focus({preventScroll: true});
+    } else if (tab === 'connect') scanInvite();
+    else if (!flow && !subject?.shares.size && canOffer(subject)) startInvite();
   }
 
   function selectShareTab(tab, camera = false) {
@@ -1789,8 +1923,9 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
       shareView.flow = null;
       closeShare(flow);
       stopCamera();
-      shareCode.value = '';
+      clearSharePin();
       shareView.tab = tab;
+      shareView.offerPermissions = defaultPermissions();
       updateShareSources(shareView.subject);
       showShareStatus();
       renderShare();
@@ -1804,7 +1939,8 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     shareView = null;
     if (!flow?.approved) closeShare(flow);
     stopCamera();
-    shareCode.value = shareLink.value = '';
+    clearSharePin();
+    shareLink.value = '';
     $('share-pin').textContent = '';
     $('share-qr').removeAttribute('src');
     await hideDialog(shareDialog);
@@ -1818,17 +1954,23 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     const session = flow.session;
     if (session?.share === flow) {
       session.share = null;
-      if (session.guest) {
-        session.state = 'offline';
-        session.stats.ended = performance.now();
-        session.term.writeln('\r\n' + (message || 'Terminal sharing ended.'));
-      }
+      clearLocalCursor(session);
+      session.state = 'offline';
+      session.stats.ended = performance.now();
+      session.term.options.disableStdin = true;
+      for (const peer of session.cursors.keys()) setPeerCursor(session, peer, null);
+      session.term.writeln('\r\n' + (message || 'Terminal sharing ended.'));
+      updateStatus();
+    } else if (session?.shares.delete(flow)) {
+      setPeerCursor(session, flow.peerId, null);
+      if (flow.permissions.view) broadcastCursor(session, flow.peerId, null);
+      if (!session.shares.size) clearLocalCursor(session);
       updateStatus();
     }
     if (flow.invite) flow.invite.close(message, notify);
     else flow.pair?.close(message, notify);
-    if (shareView?.flow === flow) {
-      shareView.flow = null;
+    if (shareView?.flow === flow || (session && shareView?.subject === session)) {
+      if (shareView.flow === flow) shareView.flow = null;
       updateShareSources(shareView.subject);
       showShareStatus(message, !flow.approved && Boolean(message));
       renderShare();
@@ -1837,6 +1979,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
 
   function stopSessionSharing(session) {
     if (session.share) closeShare(session.share, 'The terminal disconnected.');
+    for (const link of session.shares) closeShare(link, 'The terminal disconnected.');
     const flow = shareView?.flow;
     if (flow?.subject === session || flow?.session === session) closeShare(flow, 'The terminal disconnected.');
   }
@@ -1868,21 +2011,22 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     renderShare();
     try {
       const invite = await sharing.createInvite({
-        onRequest: (mode, pair, allow) => {
+        onRequest: (mode, permissions, pair, allow) => {
           if (flow.ended || shareView?.flow !== flow) {
             pair.close('The invite was cancelled.');
             return;
           }
           flow.pair = pair;
           flow.mode = mode;
+          flow.permissions = permissions || defaultPermissions();
           flow.allow = allow;
           if (mode === 'request' && !canOffer(flow.subject)) {
             closeShare(flow, 'This invite can receive a terminal only.');
             return;
           }
           $('share-approval-detail').textContent = mode === 'request'
-            ? 'PIN verified. Let this peer view and type in session ' + flow.subject.id + '?'
-            : 'PIN verified. Accept the terminal this peer is offering?';
+            ? 'PIN verified. Choose what this peer can do in session ' + flow.subject.id + '.'
+            : 'PIN verified. This peer is offering ' + permissionLabel(permissions).toLowerCase() + ' access.';
           $('share-approve').textContent = mode === 'request' ? 'Approve and share' : 'Accept terminal';
           showShareStatus();
           renderShare();
@@ -1917,17 +2061,18 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     event.preventDefault();
     if ($('share-verify').disabled || !shareView || shareView.flow) return;
     const invite = sharing.parseInvite(shareLink.value);
-    const pin = shareCode.value;
+    const pin = sharePinValue();
+    const offering = shareMode.value === 'give';
     const flow = {side: 'guest', mode: shareMode.value, started: performance.now(),
-      subject: shareMode.value === 'give' ? getShareSource() : null};
+      subject: offering ? getShareSource() : null, permissions: offering ? {...shareView.offerPermissions} : null};
     if (!invite || !sharing.pinPattern.test(pin) || (flow.mode === 'give' && !canOffer(flow.subject))) return;
     shareView.flow = flow;
     stopCamera();
-    shareCode.value = '';
+    clearSharePin();
     showShareStatus('Checking the PIN. The other person must also approve.');
     renderShare();
     try {
-      const pair = await sharing.joinInvite(invite, pin, flow.mode, {
+      const pair = await sharing.joinInvite(invite, pin, flow.mode, flow.permissions, {
         onReady: readyPair => {
           if (flow.ended || shareView?.flow !== flow) {
             readyPair.close('The request was cancelled.');
@@ -1952,7 +2097,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
 
   function approveShare() {
     const flow = shareView?.flow;
-    if (!flow?.allow || flow.approved || flow.ended) return;
+    if (!flow?.allow || flow.approved || flow.ended || !sharing.hasPermissions(flow.permissions)) return;
     if (flow.mode === 'request' && !canOffer(flow.subject)) {
       closeShare(flow, 'The terminal is no longer available.');
       return;
@@ -1964,13 +2109,20 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     flow.approved = true;
     flow.owner = owner;
     clearInterval(flow.countdown);
-    showShareStatus(owner ? 'An approved peer can view and type in this terminal.' : 'Waiting for the terminal screen…');
+    if (owner) {
+      const session = flow.subject;
+      flow.session = session;
+      flow.peerId = session.nextPeer++;
+      session.shares.add(flow);
+      shareView.flow = null;
+      shareView.subject = session;
+      shareView.tab = 'share';
+      showShareStatus('Peer ' + flow.peerId + ' connected.');
+      queueShareScreen(flow);
+    } else {
+      showShareStatus('Opening the shared terminal…');
+    }
     renderShare();
-    if (!owner) return;
-    const session = flow.subject;
-    flow.session = session;
-    session.share = flow;
-    queueShareScreen(flow);
     updateStatus();
   }
 
@@ -1982,14 +2134,20 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     term.write('', () => {
       if (flow.ended) return;
       try {
-        flow.capturedAlternate = term.buffer.active.type === 'alternate';
-        let screen = serializer.serialize({scrollback: 0});
-        if (flow.capturedAlternate) {
-          // The serializer prefixes the hidden normal buffer. Strip it before sending.
-          const hidden = serializer.serialize({scrollback: 0, excludeAltBuffer: true, excludeModes: true});
-          screen = screen.slice(hidden.length);
+        let screen = null;
+        if (flow.permissions.view) {
+          flow.capturedAlternate = term.buffer.active.type === 'alternate';
+          screen = serializer.serialize({scrollback: 0});
+          if (flow.capturedAlternate) {
+            // The serializer prefixes the hidden normal buffer. Strip it before sending.
+            const hidden = serializer.serialize({scrollback: 0, excludeAltBuffer: true, excludeModes: true});
+            screen = screen.slice(hidden.length);
+          }
         }
-        flow.pair.send(shareTypes.screen, sharing.pack({cols: term.cols, rows: term.rows, user, screen}));
+        flow.pair.send(shareTypes.screen, sharing.pack({cols: term.cols, rows: term.rows, user, screen,
+          permissions: flow.permissions, peerId: flow.peerId}));
+        if (!flow.screenSent && flow.permissions.view) sendCursorSnapshot(flow);
+        flow.screenSent = true;
         for (const bytes of flow.initialOutput) sendSharedBytes(flow, shareTypes.output, bytes);
         flow.initialOutput = null;
       } catch (_) {
@@ -2034,8 +2192,12 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   function receiveShared(flow, type, bytes) {
     if (!flow.approved || flow.ended) return;
     const session = flow.session;
+    if (type === shareTypes.cursor) {
+      if (flow.permissions?.view && flow.screenSent) receiveCursor(flow, bytes);
+      return;
+    }
     if (flow.owner) {
-      if (type === shareTypes.input && session?.share === flow && bytes.length <= 65536) {
+      if (type === shareTypes.input && flow.permissions.write && session.shares.has(flow) && bytes.length <= 65536) {
         if (session.socket?.bufferedAmount > 1048576) {
           closeShare(flow, 'The terminal cannot keep up with shared input.');
           return;
@@ -2045,14 +2207,20 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
       return;
     }
     if (type === shareTypes.screen) {
-      const {screen, user, cols, rows} = readSharedSize(bytes);
-      if (typeof screen !== 'string' || typeof user !== 'string' || !sshUser.test(user)) {
+      const {screen, user, cols, rows, permissions, peerId} = readSharedSize(bytes);
+      if (!sharing.hasPermissions(permissions) || (permissions.view ? typeof screen !== 'string' : screen !== null)
+          || typeof user !== 'string' || !sshUser.test(user) || !validPeerId(peerId) || !peerId
+          || (flow.peerId && flow.peerId !== peerId)
+          || (flow.permissions && (flow.permissions.view !== permissions.view || flow.permissions.write !== permissions.write))) {
         closeShare(flow, 'Invalid shared terminal screen.');
         return;
       }
+      flow.permissions = permissions;
+      flow.peerId = peerId;
+      flow.screenSent = true;
       if (session) {
         resizeGuest(session, {cols, rows});
-        writeGuestScreen(session, '\x1bc' + screen);
+        if (permissions.view) writeGuestScreen(session, '\x1bc' + screen);
         return;
       }
       const guest = addSession(user, '', null, true);
@@ -2063,11 +2231,14 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
       guest.stats.started = performance.now();
       if (flow.started) guest.stats.handshake = guest.stats.started - flow.started;
       flow.session = guest;
+      guest.term.options.disableStdin = !permissions.write;
+      guest.term.textarea.readOnly = !permissions.write;
       resizeGuest(guest, {cols, rows});
-      writeGuestScreen(guest, screen);
+      if (permissions.view) writeGuestScreen(guest, screen);
+      else guest.term.writeln('Write-only terminal. Input is sent without showing output.');
       updateStatus();
       dismissSharing(false).then(() => { if (!mobile.matches && active === guest) guest.term.focus(); });
-    } else if (session && type === shareTypes.output) {
+    } else if (session && type === shareTypes.output && flow.permissions.view) {
       recordTraffic(session, 'rx', bytes.length);
       writeGuestScreen(session, bytes);
     } else if (session && type === shareTypes.resize) {
@@ -2085,9 +2256,8 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     }
   }
 
-  function mirrorShareOutput(session, bytes) {
-    const flow = session.share;
-    if (!flow?.owner || flow.ended) return;
+  function mirrorShareOutput(flow, bytes) {
+    if (!flow.permissions.view || flow.ended) return;
     if (flow.initialOutput) {
       flow.initialBytes += bytes.length;
       if (flow.initialBytes > 1048576) closeShare(flow, 'The terminal changed too quickly to share.');
@@ -2095,6 +2265,178 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     } else {
       sendSharedBytes(flow, shareTypes.output, bytes);
     }
+  }
+
+  const cursorColors = ['#a7edc1', '#a5d8ff', '#ffcba7', '#e0c5ff', '#ffe48a', '#ffb7cc', '#b9e8e8'];
+  const cursorInterval = 40;
+
+  function validPeerId(value) { return Number.isSafeInteger(value) && value >= 0; }
+
+  function validCursor(position) {
+    return position === null || (Array.isArray(position) && position.length === 2 &&
+      position.every(coordinate => Number.isFinite(coordinate) && coordinate >= 0 && coordinate <= 1));
+  }
+
+  function setPeerCursor(session, peer, position) {
+    const existing = session.cursors.get(peer);
+    if (!position) {
+      if (existing) {
+        existing.element.remove();
+        session.cursors.delete(peer);
+      }
+      return;
+    }
+    if (!existing && session.cursors.size >= maxSharePeers) return;
+    let element = existing?.element;
+    if (!element) {
+      element = document.createElement('span');
+      const name = document.createElement('span');
+      element.className = 'peer-cursor';
+      element.dataset.peer = String(peer);
+      element.style.setProperty('--peer-color', cursorColors[peer % cursorColors.length]);
+      name.textContent = peer ? 'Peer ' + peer : 'Owner';
+      element.append(controlIcon('pointer'), name);
+      session.cursorLayer.append(element);
+    }
+    element.style.left = (position[0] * 100) + '%';
+    element.style.top = (position[1] * 100) + '%';
+    session.cursors.set(peer, {element, position});
+  }
+
+  function broadcastCursor(session, peer, position) {
+    const message = sharing.pack({peer, position});
+    for (const flow of session.shares) {
+      if (flow.screenSent && flow.permissions.view && flow.peerId !== peer) flow.pair.send(shareTypes.cursor, message);
+    }
+  }
+
+  function sendCursorSnapshot(flow) {
+    const session = flow.session;
+    if (session.localCursor) flow.pair.send(shareTypes.cursor, sharing.pack({peer: 0, position: session.localCursor}));
+    for (const [peer, {position}] of session.cursors) {
+      if (peer !== flow.peerId) flow.pair.send(shareTypes.cursor, sharing.pack({peer, position}));
+    }
+  }
+
+  function receiveCursor(flow, bytes) {
+    if (bytes.length > 160) return;
+    const message = sharing.unpack(bytes);
+    if (!message || !validCursor(message.position)) return;
+    const {position} = message;
+    const {session} = flow;
+    if (flow.owner) {
+      const now = performance.now();
+      if (position) {
+        if (now - (flow.lastCursor ?? -Infinity) < cursorInterval * .75) return;
+        flow.lastCursor = now;
+      } else if (!session.cursors.has(flow.peerId)) {
+        return;
+      }
+      setPeerCursor(session, flow.peerId, position);
+      broadcastCursor(session, flow.peerId, position);
+    } else if (validPeerId(message.peer) && message.peer !== flow.peerId) {
+      setPeerCursor(session, message.peer, position);
+    }
+  }
+
+  function publishLocalCursor(session, position) {
+    if (!position && !session.localCursor) return;
+    session.localCursor = position;
+    if (!session.guest) broadcastCursor(session, 0, position);
+    else if (session.share?.permissions.view) session.share.pair.send(shareTypes.cursor, sharing.pack({position}));
+  }
+
+  function clearLocalCursor(session) {
+    clearTimeout(session.cursorTimer);
+    session.cursorTimer = 0;
+    publishLocalCursor(session, null);
+  }
+
+  function wireSessionCursor(session) {
+    const {content, term, cursorLayer} = session;
+    const screen = term.element.querySelector('.xterm-screen');
+    function sizeCursorLayer() {
+      cursorLayer.style.inlineSize = screen.style.width;
+      cursorLayer.style.blockSize = screen.style.height;
+    }
+    function move(event) {
+      const visible = session.shares.size || session.share?.permissions.view;
+      if (!visible) return;
+      const bounds = screen.getBoundingClientRect();
+      if (!bounds.width || !bounds.height) return;
+      const relative = [(event.clientX - bounds.left) / bounds.width, (event.clientY - bounds.top) / bounds.height];
+      if (!validCursor(relative)) {
+        clearLocalCursor(session);
+        return;
+      }
+      session.pendingCursor = relative.map(coordinate => Math.round(coordinate * 1000) / 1000);
+      if (session.cursorTimer) return;
+      session.cursorTimer = setTimeout(() => {
+        session.cursorTimer = 0;
+        publishLocalCursor(session, session.pendingCursor);
+      }, cursorInterval);
+    }
+    term.onRender(sizeCursorLayer);
+    sizeCursorLayer();
+    content.addEventListener('pointermove', move);
+    content.addEventListener('pointerdown', move);
+    for (const event of ['pointerleave', 'pointercancel']) content.addEventListener(event, () => clearLocalCursor(session));
+    content.addEventListener('pointerup', event => { if (event.pointerType === 'touch') clearLocalCursor(session); });
+  }
+
+  function sharePinValue() {
+    return sharePinFields.map(field => field.value).join('');
+  }
+
+  function clearSharePin() {
+    for (const field of sharePinFields) field.value = '';
+  }
+
+  function pinCharacters(value) {
+    return [...value.replace(/[^a-z0-9]/gi, '').toUpperCase()].filter(char => sharing.pinAlphabet.includes(char));
+  }
+
+  function updateShareForm() {
+    showShareStatus();
+    renderShare();
+  }
+
+  function wireSharePin() {
+    const last = sharePinFields.length - 1;
+    const focus = index => sharePinFields[Math.min(index, last)].focus({preventScroll: true});
+    sharePinFields.forEach((field, index) => {
+      function erase(event) {
+        event.preventDefault();
+        const target = field.value ? index : Math.max(0, index - 1);
+        sharePinFields[target].value = '';
+        focus(target);
+        updateShareForm();
+      }
+
+      field.addEventListener('focus', () => field.select());
+      field.addEventListener('click', () => field.select());
+      field.addEventListener('input', event => {
+        if (event.isComposing) return;
+        field.value = pinCharacters(field.value)[0] || '';
+        if (field.value) focus(index + 1);
+      });
+      field.addEventListener('keydown', event => {
+        if (!event.isComposing && (event.key === 'Backspace' || event.key === 'Delete')) erase(event);
+      });
+      field.addEventListener('beforeinput', event => {
+        if (event.cancelable && /^deleteContent(?:Backward|Forward)$/.test(event.inputType)) erase(event);
+      });
+      field.addEventListener('paste', event => {
+        event.preventDefault();
+        const chars = pinCharacters(event.clipboardData?.getData('text') || '');
+        if (!chars.length || chars.length > sharePinFields.length) return;
+        const start = chars.length === sharePinFields.length ? 0 : index;
+        const count = Math.min(chars.length, sharePinFields.length - start);
+        for (let offset = 0; offset < count; offset++) sharePinFields[start + offset].value = chars[offset];
+        focus(start + count);
+        updateShareForm();
+      });
+    });
   }
 
   function wireSharing() {
@@ -2119,6 +2461,19 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     });
     $('share-scan').addEventListener('click', scanInvite);
     $('share-generate').addEventListener('click', startInvite);
+    for (const [id, getPermissions] of [
+      ['share-approval-permissions', () => shareView?.flow?.permissions],
+      ['share-offer-permissions', () => shareView?.offerPermissions]
+    ]) {
+      $(id).addEventListener('click', event => {
+        const button = event.target.closest('button[data-permission]');
+        const permissions = getPermissions();
+        if (!button || !permissions) return;
+        const key = button.dataset.permission;
+        permissions[key] = !permissions[key];
+        renderShare();
+      });
+    }
     $('share-cancel').addEventListener('click', () => closeShare(shareView?.flow));
     $('share-decline').addEventListener('click', () => closeShare(shareView?.flow, 'Request declined.'));
     $('share-approve').addEventListener('click', approveShare);
@@ -2136,11 +2491,8 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
       }
     });
     $('share-join').addEventListener('submit', requestShare);
-    $('share-join').addEventListener('input', () => {
-      shareCode.value = shareCode.value.toUpperCase();
-      showShareStatus();
-      renderShare();
-    });
+    $('share-join').addEventListener('input', updateShareForm);
+    wireSharePin();
     document.addEventListener('pointerdown', event => {
       if (!connectionMenu.hidden && !connectionMenu.contains(event.target) && !statusButton.contains(event.target)) {
         showStats(false);
@@ -2238,7 +2590,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     statusButton.title = label + ' · Connection statistics';
     for (const session of sessions) {
       session.shareButton.hidden = session.state !== 'online';
-      session.shareButton.dataset.shared = String(Boolean(session.share));
+      session.shareButton.dataset.shared = String(Boolean(session.share || session.shares.size));
     }
     if (!connectionMenu.hidden) renderStats();
   }
@@ -2267,8 +2619,9 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     if (size !== session.lastSize) {
       socket.send(JSON.stringify({type: 'resize', cols: term.cols, rows: term.rows}));
       session.lastSize = size;
-      if (session.share?.owner && !session.share.initialOutput) {
-        session.share.pair.send(shareTypes.resize, sharing.pack({cols: term.cols, rows: term.rows}));
+      const dimensions = sharing.pack({cols: term.cols, rows: term.rows});
+      for (const flow of session.shares) {
+        if (flow.screenSent && !flow.initialOutput) flow.pair.send(shareTypes.resize, dimensions);
       }
     }
   }
@@ -2448,6 +2801,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   }
 
   function minimizePane(session) {
+    clearLocalCursor(session);
     paneLayout = replacePane(paneLayout, session, null);
     renderPanes();
     if (active === session) {
@@ -2605,7 +2959,8 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
 
   function writeBytes(session, bytes) {
     if (session.state !== 'online' || !bytes.length) return;
-    if (session.guest && session.share) {
+    if (session.guest) {
+      if (!session.share?.permissions.write) return;
       sendSharedBytes(session.share, shareTypes.input, bytes);
     } else if (session.socket?.readyState === WebSocket.OPEN) {
       session.socket.send(bytes);
@@ -2640,6 +2995,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     const paneClose = document.createElement('button');
     const frame = document.createElement('div');
     const content = document.createElement('div');
+    const cursorLayer = document.createElement('div');
     row.className = 'tab-row';
     row.setAttribute('role', 'presentation');
     tab.type = close.type = 'button';
@@ -2681,6 +3037,8 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     paneBar.append(paneLabel, paneActions);
     frame.className = 'terminal-with-padding';
     content.className = 'terminal-content';
+    cursorLayer.className = 'peer-cursors';
+    cursorLayer.setAttribute('aria-hidden', 'true');
     frame.append(content);
     panel.append(paneBar, frame);
     row.append(tab, close);
@@ -2704,7 +3062,8 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     const serializer = guest ? null : new window.TTYShareVendor.SerializeAddon();
     const session = {
       id, row, tab, close, panel, paneLabel, term, fit, user, content, shareButton, serializer, guest,
-      state: 'offline', socket: null, timer: 0, lastSize: '', share: null, guestWrite: 0, stats: {rx: 0, tx: 0}
+      state: 'offline', socket: null, timer: 0, lastSize: '', share: null, shares: new Set(), nextPeer: 1,
+      cursorLayer, cursors: new Map(), cursorTimer: 0, localCursor: null, guestWrite: 0, stats: {rx: 0, tx: 0}
     };
     if (guest) panel.dataset.guest = 'true';
     sessions.push(session);
@@ -2717,9 +3076,13 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     term.loadAddon(fit);
     if (serializer) term.loadAddon(serializer);
     term.open(content);
+    content.append(cursorLayer);
+    wireSessionCursor(session);
     if (guest) term.onRender(() => sizeGuestFrame(session));
     else term.buffer.onBufferChange(buffer => {
-      if (buffer.type === 'normal' && session.share?.capturedAlternate) queueShareScreen(session.share);
+      if (buffer.type === 'normal') {
+        for (const flow of session.shares) if (flow.capturedAlternate) queueShareScreen(flow);
+      }
     });
 
     tab.addEventListener('click', () => setActive(session, true));
@@ -2787,6 +3150,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     if (session.stats.started && !session.stats.ended) session.stats.ended = performance.now();
     session.lastSize = '';
     stopSessionSharing(session);
+    clearLocalCursor(session);
     if (socket && socket.readyState < WebSocket.CLOSING) socket.close(1000, 'Client disconnected');
   }
 
@@ -2947,7 +3311,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
         if (session.state === 'online') {
           const bytes = new Uint8Array(data);
           recordTraffic(session, 'rx', bytes.length);
-          mirrorShareOutput(session, bytes);
+          for (const flow of session.shares) mirrorShareOutput(flow, bytes);
           session.term.write(bytes);
         }
         return;
@@ -3021,6 +3385,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     document.documentElement.style.setProperty('--viewport-height', height + 'px');
     app.dataset.keyboard = String(keyboardOpen);
     softKeys.hidden = !(keyboardOpen && active?.state === 'online'
+      && (!active.guest || active.share?.permissions.write)
       && document.activeElement === active.term.textarea && !connectDialog.open && !closeDialog.open && !shareDialog.open);
     positionConnectPanel();
     positionFontMenu();
@@ -3248,6 +3613,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   }, {passive: false});
   addEventListener('pagehide', () => {
     stopCamera();
+    clearSharePin();
     closeShare(shareView?.flow);
     showStats(false);
     for (const session of sessions) endSocket(session);
@@ -3256,6 +3622,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     renderForm();
     updateStatus();
   });
+  addEventListener('blur', () => { for (const session of sessions) clearLocalCursor(session); });
 
   function consumeInviteLink() {
     const inviteLink = location.href;
