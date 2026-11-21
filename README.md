@@ -1,1 +1,1 @@
-Pairs well with https://github.com/robit-man/cloudflared-quick-tunnel-tray
+Pairs well with [this application](https://github.com/robit-man/cloudflared-quick-tunnel-tray)
