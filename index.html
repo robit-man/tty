@@ -269,8 +269,7 @@ button:not(:disabled):active { transform: scale(.96); }
   min-block-size: 27px;
   flex: none;
   padding-inline: 8px 2px;
-  border-block-end: 1px solid var(--edge);
-  background: var(--surface);
+  background: var(--black);
   color: var(--muted);
   cursor: grab;
   user-select: none;
@@ -296,21 +295,24 @@ button:not(:disabled):active { transform: scale(.96); }
   position: relative;
   min-inline-size: 0;
   min-block-size: 0;
+  background: transparent;
   touch-action: none;
+  transition: background-color var(--fade);
 }
 .pane-divider::before {
   position: absolute;
   content: "";
-  background: var(--edge);
+  background: transparent;
   transition: background-color var(--fade);
 }
 .pane-split[data-axis="row"] > .pane-divider { cursor: col-resize; }
 .pane-split[data-axis="row"] > .pane-divider::before { inset: 0 4px; }
 .pane-split[data-axis="column"] > .pane-divider { cursor: row-resize; }
 .pane-split[data-axis="column"] > .pane-divider::before { inset: 4px 0; }
-.pane-divider:hover, .pane-divider[data-resizing="true"] { background: var(--hover); }
-.pane-divider:hover::before, .pane-divider:focus-visible::before,
-.pane-divider[data-resizing="true"]::before { background: #dadada; }
+@media (any-hover: hover) {
+  .pane-divider:hover { background: var(--hover); }
+  .pane-divider:hover::before { background: #dadada; }
+}
 #dock-targets {
   position: absolute;
   z-index: 1;
