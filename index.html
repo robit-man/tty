@@ -56,6 +56,7 @@
   --control-height: 46px;
   --gap: 8px;
   --fade: 100ms;
+  --divider-size: 9px;
   --viewport-top: 0px;
   --viewport-height: 100dvh;
   font: 400 1rem/1.4 system-ui, sans-serif;
@@ -123,11 +124,14 @@ button:not(:disabled):active { transform: scale(.96); }
   background: transparent;
 }
 .icon-button:hover { background: var(--hover); }
-#add-session {
-  background: var(--surface);
-  border-color: var(--edge);
+#toggle-sessions { order: -1; }
+#app[data-sidebar-open="true"] #toggle-sessions { margin-inline-end: auto; }
+#toggle-sessions svg {
+  inline-size: 16px;
+  block-size: 16px;
+  transition: transform var(--fade);
 }
-#add-session:hover { background: var(--hover); border-color: var(--edge-strong); }
+#toggle-sessions[aria-expanded="true"] svg { transform: rotate(180deg); }
 .plus, .cross {
   position: relative;
   display: block;
@@ -167,7 +171,8 @@ button:not(:disabled):active { transform: scale(.96); }
   inline-size: var(--rail-width);
   flex: none;
   align-self: stretch;
-  padding: 3px 0 10px 7px;
+  padding: 3px 5px 10px 7px;
+  border-inline-end: 1px solid var(--edge);
   overflow: auto;
   overscroll-behavior: contain;
 }
@@ -201,6 +206,7 @@ button:not(:disabled):active { transform: scale(.96); }
   overflow: hidden;
   font-size: .75rem;
   color: #d2d2d2;
+  touch-action: pan-y;
 }
 .tab-select:hover, .tab-close:hover { background: var(--hover); }
 .tab-select:focus-visible, .tab-close:focus-visible { outline-offset: -3px; }
@@ -218,13 +224,107 @@ button:not(:disabled):active { transform: scale(.96); }
   min-inline-size: 0;
   min-block-size: 0;
 }
+#panes, .pane-split, .terminal-panel {
+  inline-size: 100%;
+  block-size: 100%;
+  min-inline-size: 0;
+  min-block-size: 0;
+}
+.pane-split { display: grid; }
+.pane-split[data-axis="row"] {
+  grid-template-columns: minmax(0, var(--first)) var(--divider-size) minmax(0, var(--second));
+  grid-template-rows: minmax(0, 1fr);
+}
+.pane-split[data-axis="column"] {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, var(--first)) var(--divider-size) minmax(0, var(--second));
+}
 .terminal-panel {
-  position: absolute;
-  inset: 0;
-  padding: 3px 6px 4px 8px;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
+.terminal-with-padding {
+  flex: 1;
+  min-block-size: 0;
+  padding: 3px 6px 4px 8px;
+}
 .terminal-content, .terminal-content > .xterm { inline-size: 100%; block-size: 100%; }
+.pane-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-block-size: 27px;
+  flex: none;
+  padding-inline: 8px 2px;
+  border-block-end: 1px solid var(--edge);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  font-size: .75rem;
+}
+.terminal-panel[data-active="true"] .pane-bar { color: var(--text); }
+.pane-label { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pane-minimize {
+  position: relative;
+  display: grid;
+  place-items: center;
+  inline-size: 26px;
+  block-size: 25px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+}
+.pane-minimize:hover { background: var(--hover); }
+.pane-minimize::before {
+  content: "";
+  inline-size: 9px;
+  block-size: 1px;
+  background: currentColor;
+}
+.pane-divider {
+  position: relative;
+  min-inline-size: 0;
+  min-block-size: 0;
+  touch-action: none;
+}
+.pane-divider::before {
+  position: absolute;
+  content: "";
+  background: var(--edge);
+  transition: background-color var(--fade);
+}
+.pane-split[data-axis="row"] > .pane-divider { cursor: col-resize; }
+.pane-split[data-axis="row"] > .pane-divider::before { inset: 0 4px; }
+.pane-split[data-axis="column"] > .pane-divider { cursor: row-resize; }
+.pane-split[data-axis="column"] > .pane-divider::before { inset: 4px 0; }
+.pane-divider:hover, .pane-divider[data-resizing="true"] { background: var(--hover); }
+.pane-divider:hover::before, .pane-divider:focus-visible::before,
+.pane-divider[data-resizing="true"]::before { background: #dadada; }
+#dock-targets {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  background: rgb(0 0 0 / .64);
+  pointer-events: none;
+}
+.dock-target {
+  position: absolute;
+  border: 1px solid var(--edge-strong);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.dock-target[data-highlight="true"] {
+  border-color: rgb(255 255 255 / .76);
+  background: var(--selected);
+}
+#app[data-dragging="true"] { cursor: grabbing; user-select: none; }
+#app[data-dragging="true"] .pane-bar, #app[data-dragging="true"] .tab-select { cursor: grabbing; }
 .terminal-content .xterm-helpers .xterm-helper-textarea {
   font-size: 16px !important;
 }
@@ -347,11 +447,11 @@ dialog::backdrop { background: transparent; }
   gap: var(--gap);
 }
 @media (max-width: 560px) {
-  #tabs { --rail-width: 76px; padding-inline-start: 4px; }
+  #tabs { --rail-width: 79px; padding-inline: 4px 3px; }
   .tab-row { inline-size: calc(100% - 10px); min-block-size: 42px; }
   .tab-select { padding-inline: 4px; font-size: .6875rem; }
   .tab-close { inline-size: 25px; }
-  .terminal-panel { padding-inline-start: 5px; }
+  .terminal-with-padding { padding-inline-start: 5px; }
   #controls { padding-inline-end: 4px; }
 }
 @media (pointer: coarse) {
@@ -371,6 +471,13 @@ dialog::backdrop { background: transparent; }
 <body>
 <div id="app">
   <div id="controls">
+    <button id="toggle-sessions" class="icon-button" type="button" aria-label="Show sessions"
+        aria-controls="tabs" aria-expanded="false" title="Show sessions">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M6 4l4 4-4 4" />
+      </svg>
+    </button>
     <button id="add-session" class="icon-button" type="button" aria-label="New session"
         aria-haspopup="dialog" aria-controls="connect-dialog" title="New session">
       <span class="plus" aria-hidden="true"></span>
@@ -382,7 +489,10 @@ dialog::backdrop { background: transparent; }
   </div>
   <main id="workspace" aria-label="Terminal workspace">
     <div id="tabs" role="tablist" aria-label="SSH sessions" aria-orientation="vertical" hidden></div>
-    <div id="terminals"></div>
+    <div id="terminals">
+      <div id="panes"></div>
+      <div id="dock-targets" aria-hidden="true" hidden></div>
+    </div>
   </main>
   <div id="soft-keys" role="group" aria-label="Terminal keyboard controls" hidden></div>
   <div id="announcement" class="visually-hidden" role="status"></div>
@@ -430,7 +540,10 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   const app = $('app');
   const tabs = $('tabs');
   const terminals = $('terminals');
+  const paneArea = $('panes');
+  const dockTargets = $('dock-targets');
   const softKeys = $('soft-keys');
+  const sidebarToggle = $('toggle-sessions');
   const addButton = $('add-session');
   const statusButton = $('session-status');
   const connectDialog = $('connect-dialog');
@@ -443,6 +556,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   const mobile = matchMedia('(any-pointer: coarse)');
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   const encoder = new TextEncoder();
+  const dividerSize = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--divider-size'));
   const sshUser = /^[A-Za-z_][A-Za-z0-9_.-]{0,63}$/;
   const tunnelHost = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.trycloudflare\.com$/;
   const tunnelToken = /^[A-Za-z0-9_-]{32,128}$/;
@@ -450,6 +564,11 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   const modifiers = {Ctrl: false, Shift: false, Alt: false};
   const modifierButtons = new Map();
   let active = null;
+  let paneLayout = null;
+  const visiblePanes = new Map();
+  let drag = null;
+  let suppressClick = null;
+  let sidebarOpen = false;
   let intake = null;
   let closingSession = null;
   let nextSession = 1;
@@ -500,15 +619,15 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     }
   }
 
-  function fitTerminal() {
-    if (!active) return;
-    const {term, fit, socket} = active;
+  function fitTerminal(session = active) {
+    if (!visiblePanes.has(session)) return;
+    const {term, fit, socket} = session;
     fit.fit();
-    if (active.state !== 'online' || socket?.readyState !== WebSocket.OPEN) return;
+    if (session.state !== 'online' || socket?.readyState !== WebSocket.OPEN) return;
     const size = term.cols + 'x' + term.rows;
-    if (size !== active.lastSize) {
+    if (size !== session.lastSize) {
       socket.send(JSON.stringify({type: 'resize', cols: term.cols, rows: term.rows}));
-      active.lastSize = size;
+      session.lastSize = size;
     }
   }
 
@@ -516,25 +635,229 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     if (fitFrame) return;
     fitFrame = requestAnimationFrame(() => {
       fitFrame = 0;
-      fitTerminal();
+      for (const session of visiblePanes.keys()) fitTerminal(session);
     });
+  }
+
+  function isSplit(node) { return Boolean(node?.axis); }
+
+  function firstPane(node) {
+    return isSplit(node) ? firstPane(node.first) : node;
+  }
+
+  function replacePane(node, session, replacement) {
+    if (!isSplit(node)) return node === session ? replacement : node;
+    const first = replacePane(node.first, session, replacement);
+    const second = replacePane(node.second, session, replacement);
+    if (!first || !second) return first || second;
+    return {...node, first, second};
+  }
+
+  function makeDivider(split, element) {
+    const divider = document.createElement('div');
+    const row = split.axis === 'row';
+    divider.className = 'pane-divider';
+    divider.tabIndex = 0;
+    divider.setAttribute('role', 'separator');
+    divider.setAttribute('aria-label', 'Resize terminal panes');
+    divider.setAttribute('aria-orientation', row ? 'vertical' : 'horizontal');
+
+    function setRatio(value) {
+      const span = row ? element.clientWidth : element.clientHeight;
+      const minimum = Math.min(.35, 82 / Math.max(1, span - dividerSize));
+      split.ratio = Math.max(minimum, Math.min(1 - minimum, value));
+      element.style.setProperty('--first', split.ratio + 'fr');
+      element.style.setProperty('--second', (1 - split.ratio) + 'fr');
+      divider.setAttribute('aria-valuemin', String(Math.round(minimum * 100)));
+      divider.setAttribute('aria-valuemax', String(Math.round((1 - minimum) * 100)));
+      divider.setAttribute('aria-valuenow', String(Math.round(split.ratio * 100)));
+      scheduleFit();
+    }
+
+    element.style.setProperty('--first', split.ratio + 'fr');
+    element.style.setProperty('--second', (1 - split.ratio) + 'fr');
+    divider.setAttribute('aria-valuenow', String(Math.round(split.ratio * 100)));
+    divider.addEventListener('pointerdown', event => {
+      if (event.button !== 0 || !event.isPrimary) return;
+      event.preventDefault();
+      divider.setPointerCapture(event.pointerId);
+      divider.dataset.resizing = 'true';
+    });
+    divider.addEventListener('pointermove', event => {
+      if (!divider.hasPointerCapture(event.pointerId)) return;
+      const bounds = element.getBoundingClientRect();
+      const coordinate = row ? event.clientX - bounds.left : event.clientY - bounds.top;
+      const span = row ? bounds.width : bounds.height;
+      setRatio((coordinate - dividerSize / 2) / Math.max(1, span - dividerSize));
+    });
+    divider.addEventListener('lostpointercapture', () => { delete divider.dataset.resizing; });
+    divider.addEventListener('keydown', event => {
+      const negative = row ? 'ArrowLeft' : 'ArrowUp';
+      const positive = row ? 'ArrowRight' : 'ArrowDown';
+      if (![negative, positive].includes(event.key)) return;
+      event.preventDefault();
+      setRatio(split.ratio + (event.key === negative ? -1 : 1) * (event.shiftKey ? .12 : .04));
+    });
+    return divider;
+  }
+
+  function renderPanes() {
+    visiblePanes.clear();
+    function build(node, parentAxis = null) {
+      if (!isSplit(node)) {
+        visiblePanes.set(node, parentAxis);
+        node.paneBar.hidden = !parentAxis;
+        node.panel.setAttribute('role', parentAxis ? 'region' : 'tabpanel');
+        return node.panel;
+      }
+      const element = document.createElement('div');
+      element.className = 'pane-split';
+      element.dataset.axis = node.axis;
+      element.append(build(node.first, node.axis), makeDivider(node, element), build(node.second, node.axis));
+      return element;
+    }
+    paneArea.replaceChildren(...(paneLayout ? [build(paneLayout)] : []));
+    scheduleFit();
   }
 
   function setActive(session, focus = false) {
     if (active !== session) clearModifiers();
+    if (session && !visiblePanes.has(session)) {
+      paneLayout = paneLayout ? replacePane(paneLayout, active || firstPane(paneLayout), session) : session;
+      renderPanes();
+    }
     active = session;
-    tabs.hidden = sessions.length === 0;
     for (const item of sessions) {
       const selected = item === active;
       item.row.dataset.selected = String(selected);
       item.tab.setAttribute('aria-selected', String(selected));
       item.tab.tabIndex = selected ? 0 : -1;
       item.close.hidden = !selected;
-      item.panel.hidden = !selected;
+      item.panel.dataset.active = String(selected);
     }
     if (session && focus && (!mobile.matches || keyboardOpen)) session.term.focus();
     updateStatus();
     updateViewport();
+    scheduleFit();
+  }
+
+  function minimizePane(session) {
+    paneLayout = replacePane(paneLayout, session, null);
+    renderPanes();
+    if (active === session) setActive(firstPane(paneLayout), true);
+  }
+
+  function dockSession(session, target, axis, insertFirst) {
+    if (session === target) return;
+    paneLayout = replacePane(paneLayout, session, null);
+    const split = {axis, ratio: .5,
+      first: insertFirst ? session : target, second: insertFirst ? target : session};
+    paneLayout = replacePane(paneLayout, target, split);
+    renderPanes();
+    setActive(session, true);
+  }
+
+  function dockRegions(source) {
+    const layout = visiblePanes.has(source) ? replacePane(paneLayout, source, null) : paneLayout;
+    const regions = [];
+    function visit(node, left, top, width, height, parentAxis = null) {
+      if (!isSplit(node)) {
+        regions.push({target: node, parentAxis, left, top, width, height});
+        return;
+      }
+      const row = node.axis === 'row';
+      const span = Math.max(0, (row ? width : height) - dividerSize);
+      const first = span * node.ratio;
+      const second = span - first;
+      visit(node.first, left, top, row ? first : width, row ? height : first, node.axis);
+      visit(node.second, left + (row ? first + dividerSize : 0), top + (row ? 0 : first + dividerSize),
+        row ? second : width, row ? height : second, node.axis);
+    }
+    const base = terminals.getBoundingClientRect();
+    if (layout) visit(layout, base.left, base.top, base.width, base.height);
+    return regions;
+  }
+
+  function dockPosition(session, x, y) {
+    const regions = dockRegions(session);
+    for (const rect of regions) {
+      if (!rect.width || !rect.height || x < rect.left || x > rect.left + rect.width
+          || y < rect.top || y > rect.top + rect.height) continue;
+      const across = (x - rect.left) / rect.width;
+      const down = (y - rect.top) / rect.height;
+      const axis = rect.parentAxis ? (rect.parentAxis === 'row' ? 'column' : 'row')
+        : (Math.abs(across - .5) >= Math.abs(down - .5) ? 'row' : 'column');
+      return {target: rect.target, axis, first: (axis === 'row' ? across : down) < .5, regions};
+    }
+    return null;
+  }
+
+  function previewDock(position) {
+    dockTargets.hidden = !position;
+    dockTargets.replaceChildren();
+    if (!position) return;
+    const base = terminals.getBoundingClientRect();
+    for (const rect of position.regions) {
+      const axis = rect.parentAxis ? (rect.parentAxis === 'row' ? 'column' : 'row') : position.axis;
+      const row = axis === 'row';
+      const width = row ? rect.width / 2 : rect.width;
+      const height = row ? rect.height : rect.height / 2;
+      for (const first of [true, false]) {
+        const zone = document.createElement('div');
+        zone.className = 'dock-target';
+        zone.dataset.highlight = String(rect.target === position.target && first === position.first);
+        const x = rect.left - base.left + (!first && row ? width : 0);
+        const y = rect.top - base.top + (!first && !row ? height : 0);
+        Object.assign(zone.style, {
+          left: x + 3 + 'px', top: y + 3 + 'px', width: Math.max(0, width - 6) + 'px',
+          height: Math.max(0, height - 6) + 'px'
+        });
+        dockTargets.append(zone);
+      }
+    }
+  }
+
+  function beginDrag(event, session) {
+    if (event.button !== 0 || !event.isPrimary) return;
+    drag = {session, pointer: event.pointerId, x: event.clientX, y: event.clientY,
+      handle: event.target, moved: false, position: null};
+  }
+
+  function moveDrag(event) {
+    if (!drag || drag.pointer !== event.pointerId) return;
+    if (!drag.moved && Math.hypot(drag.x - event.clientX, drag.y - event.clientY) < 6) return;
+    drag.moved = true;
+    app.dataset.dragging = 'true';
+    if (event.cancelable) event.preventDefault();
+    const position = dockPosition(drag.session, event.clientX, event.clientY);
+    if (position?.target !== drag.position?.target || position?.axis !== drag.position?.axis
+        || position?.first !== drag.position?.first) {
+      drag.position = position;
+      previewDock(position);
+    }
+  }
+
+  function finishDrag(event) {
+    if (!drag || drag.pointer !== event.pointerId) return;
+    const {session, moved, handle} = drag;
+    drag = null;
+    delete app.dataset.dragging;
+    dockTargets.hidden = true;
+    if (!moved) return;
+    suppressClick = handle;
+    setTimeout(() => { if (suppressClick === handle) suppressClick = null; }, 80);
+    const position = event.type === 'pointerup' && dockPosition(session, event.clientX, event.clientY);
+    if (position) dockSession(session, position.target, position.axis, position.first);
+  }
+
+  function toggleSidebar(open) {
+    sidebarOpen = open;
+    tabs.hidden = !open;
+    app.dataset.sidebarOpen = String(open);
+    sidebarToggle.setAttribute('aria-expanded', String(open));
+    const action = open ? 'Hide sessions' : 'Show sessions';
+    sidebarToggle.setAttribute('aria-label', action);
+    sidebarToggle.title = action;
     scheduleFit();
   }
 
@@ -547,6 +870,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   function changeSessionLabel(session, user, host) {
     session.user = user;
     session.tab.textContent = session.id + ' ' + user;
+    session.paneLabel.textContent = session.tab.textContent;
     session.tab.title = user + '@' + host;
     session.tab.setAttribute('aria-label', 'Session ' + session.id + ', ' + user + ' at ' + host);
     session.close.setAttribute('aria-label', 'Close session ' + session.id + ', ' + user);
@@ -558,6 +882,10 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     const tab = document.createElement('button');
     const close = document.createElement('button');
     const panel = document.createElement('section');
+    const paneBar = document.createElement('div');
+    const paneLabel = document.createElement('span');
+    const minimize = document.createElement('button');
+    const frame = document.createElement('div');
     const content = document.createElement('div');
     const cross = document.createElement('span');
     row.className = 'tab-row';
@@ -575,11 +903,20 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     panel.setAttribute('role', 'tabpanel');
     panel.setAttribute('aria-labelledby', tab.id);
     tab.setAttribute('aria-controls', panel.id);
+    paneBar.className = 'pane-bar';
+    paneBar.hidden = true;
+    paneLabel.className = 'pane-label';
+    minimize.className = 'pane-minimize';
+    minimize.type = 'button';
+    minimize.setAttribute('aria-label', 'Minimize session ' + id);
+    minimize.title = 'Minimize pane';
+    paneBar.append(paneLabel, minimize);
+    frame.className = 'terminal-with-padding';
     content.className = 'terminal-content';
-    panel.append(content);
+    frame.append(content);
+    panel.append(paneBar, frame);
     row.append(tab, close);
     tabs.append(row);
-    terminals.append(panel);
 
     const term = new Terminal({
       cursorBlink: !reducedMotion.matches,
@@ -596,7 +933,10 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
       }
     });
     const fit = new FitAddon();
-    const session = {id, row, tab, close, panel, term, fit, user, state: 'offline', socket: null, timer: 0, lastSize: ''};
+    const session = {
+      id, row, tab, close, panel, paneBar, paneLabel, term, fit, user,
+      state: 'offline', socket: null, timer: 0, lastSize: ''
+    };
     sessions.push(session);
     changeSessionLabel(session, user, host);
     setActive(session);
@@ -604,6 +944,16 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     term.open(content);
 
     tab.addEventListener('click', () => setActive(session, true));
+    tab.addEventListener('pointerdown', event => beginDrag(event, session));
+    paneBar.addEventListener('pointerdown', event => {
+      if (!event.target.closest('button')) beginDrag(event, session);
+    });
+    paneBar.addEventListener('click', event => {
+      if (!event.target.closest('button')) setActive(session, true);
+    });
+    minimize.addEventListener('click', () => minimizePane(session));
+    frame.addEventListener('pointerdown', () => setActive(session));
+    frame.addEventListener('focusin', () => { if (active !== session) setActive(session); });
     close.addEventListener('click', () => {
       closingSession = session;
       $('close-detail').textContent = session.state === 'online'
@@ -648,15 +998,18 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     if (socket && socket.readyState < WebSocket.CLOSING) socket.close(1000, 'Client disconnected');
   }
 
-  function removeSession(session, next) {
+  function removeSession(session, next, previousLayout) {
     const index = sessions.indexOf(session);
     if (index < 0) return;
     endSocket(session);
     sessions.splice(index, 1);
+    paneLayout = previousLayout ?? replacePane(paneLayout, session, null);
     session.term.dispose();
     session.row.remove();
     session.panel.remove();
-    if (active === session) setActive(next || sessions[index] || sessions[index - 1] || null);
+    renderPanes();
+    if (active === session) setActive(next || firstPane(paneLayout) || sessions[index] || sessions[index - 1] || null);
+    if (sessions.length === 0) toggleSidebar(false);
   }
 
   function renderForm() {
@@ -699,7 +1052,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
 
   function openConnect(reuse = null, focus = true) {
     if (connectDialog.open || closeDialog.open) return;
-    intake = {reuse, previous: active, pending: null};
+    intake = {reuse, previous: active, previousLayout: paneLayout, pending: null};
     endpoint.value = '';
     username.value = reuse?.user || active?.user || lastUser;
     reportConnectError('');
@@ -716,7 +1069,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
       endSocket(session);
       updateStatus();
     } else {
-      removeSession(session, view.previous);
+      removeSession(session, view.previous, view.previousLayout);
     }
   }
 
@@ -776,7 +1129,10 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
       if (message?.type === 'ready' && message.v === 1 && session.state === 'connecting') {
         clearTimeout(session.timer);
         view.pending = null;
-        if (!view.reuse) nextSession++;
+        if (!view.reuse) {
+          if (sessions.length === 1) toggleSidebar(true);
+          nextSession++;
+        }
         session.state = 'online';
         session.term.reset();
         changeSessionLabel(session, user, destination.host);
@@ -793,14 +1149,16 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
         socket.close(1000, 'Session ended');
       }
     };
-    socket.onclose = () => {
+    socket.onclose = ({reason}) => {
       if (session.socket !== socket) return;
       if (session.state === 'connecting') {
         failed('Couldn’t reach the terminal. Check the link and browser tunnel mode.');
         return;
       }
       endSocket(session);
-      session.term.writeln(ended ? '\r\nSession ended.' : '\r\nSession disconnected.');
+      const message = reason === 'Ended by tunnel owner' ? 'The tunnel owner ended this session.'
+        : ended ? 'Session ended.' : 'Session disconnected.';
+      session.term.writeln('\r\n' + message);
       if (session === active) {
         clearModifiers();
         updateStatus();
@@ -953,6 +1311,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
 
   dismissOnOutside(connectDialog, () => dismissConnect());
   dismissOnOutside(closeDialog, dismissClose);
+  sidebarToggle.addEventListener('click', () => toggleSidebar(!sidebarOpen));
   addButton.addEventListener('click', () => openConnect());
   statusButton.addEventListener('click', () => openConnect(active?.state === 'offline' ? active : null));
   $('keep-session').addEventListener('click', dismissClose);
@@ -977,6 +1336,22 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     setActive(sessions[next]);
     sessions[next].tab.focus();
   });
+  addEventListener('pointermove', moveDrag, {passive: false});
+  addEventListener('pointerup', finishDrag);
+  addEventListener('pointercancel', finishDrag);
+  addEventListener('keydown', event => {
+    if (event.key === 'Escape' && drag?.moved) {
+      event.preventDefault();
+      finishDrag({type: 'pointercancel', pointerId: drag.pointer});
+    }
+  }, true);
+  document.addEventListener('click', event => {
+    if (suppressClick === event.target) {
+      suppressClick = null;
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }, true);
   form.addEventListener('input', () => {
     reportConnectError('');
     renderForm();
