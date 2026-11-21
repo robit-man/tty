@@ -2,7 +2,7 @@
 
 ## Direction
 
-The terminal fills a black viewport. The connection form opens in a modal. The upper-right plus and connection dot remain visible during use. The session rail has a thin divider, with extra width and a close button on the selected tab. A centered plus entry opens the connection modal. The caret stays on the left while the rail slides in or out. The terminal fills the available width with the rail collapsed. The keyboard controls appear next to the on-screen keyboard when the terminal has focus.
+The terminal fills a black viewport. The connection form opens in a modal. The upper-right plus and connection dot remain visible during use. Every session row and the centered plus entry share the same width. Session rows reveal their close action on hover, keyboard focus, or a touch-and-hold gesture. The caret stays on the left while the rail slides in or out. The terminal fills the available width with the rail collapsed. The keyboard controls appear next to the on-screen keyboard when the terminal has focus.
 
 ## Tokens
 
@@ -27,4 +27,4 @@ Use the system sans-serif for controls and the built-in monospace stack for term
 
 Keep each tab’s connection and scrollback independent. A connection error stays in the form and allows a retry. Closing a tab asks for confirmation. Pressing a mobile modifier applies it to the next key. Send the token in the WebSocket hello and clear the form’s link when the modal closes. Remember the SSH username locally.
 
-Drag a tab or pane header to dock its terminal. The preview dims the workspace and highlights the destination. A single pane can split in either direction. Nested panes split perpendicular to their parent. Headers appear when a split is visible and share the terminal's black background. Minimizing a pane keeps its session available from the sidebar. Dividers fade into view on hover and can be dragged to resize panes.
+Drag a tab or pane header to dock its terminal. The preview dims the workspace and highlights the destination. A single pane can split in either direction. Nested panes split perpendicular to their parent. Every pane has a black header. Its label opens text-size controls for that session, and minimizing the pane keeps its session available from the sidebar. Dividers fade into view on hover and can be dragged to resize panes.

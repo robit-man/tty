@@ -181,17 +181,16 @@ button:not(:disabled):active { transform: scale(.96); }
 #app[data-sidebar-open="true"] .sidebar-content { transform: translateX(0); }
 .tab-row {
   display: flex;
-  inline-size: calc(100% - 19px);
+  inline-size: 100%;
   min-block-size: 34px;
   margin-block-end: 5px;
   overflow: hidden;
   border-radius: var(--radius);
   border: 1px solid var(--edge);
   background: var(--surface);
-  transition: inline-size var(--fade), background-color var(--fade), border-color var(--fade);
+  transition: background-color var(--fade), border-color var(--fade);
 }
 .tab-row[data-selected="true"] {
-  inline-size: 100%;
   border-color: var(--edge-strong);
   background: var(--hover);
 }
@@ -218,6 +217,8 @@ button:not(:disabled):active { transform: scale(.96); }
   font-size: .75rem;
   color: #d2d2d2;
   touch-action: pan-y;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 .tab-select:hover, .tab-close:hover { background: var(--hover); }
 .tab-select:focus-visible, .tab-close:focus-visible { outline-offset: -3px; }
@@ -228,6 +229,13 @@ button:not(:disabled):active { transform: scale(.96); }
   display: grid;
   place-items: center;
   padding: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.tab-select:focus-visible + .tab-close, .tab-close:focus-visible,
+.tab-row[data-touch-close="true"] .tab-close { opacity: 1; pointer-events: auto; }
+@media (any-hover: hover) {
+  .tab-row:hover .tab-close { opacity: 1; pointer-events: auto; }
 }
 #terminals {
   position: relative;
@@ -277,7 +285,48 @@ button:not(:disabled):active { transform: scale(.96); }
   font-size: .75rem;
 }
 .terminal-panel[data-active="true"] .pane-bar { color: var(--text); }
-.pane-label { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pane-label {
+  min-inline-size: 0;
+  block-size: 25px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.pane-label:hover, .pane-label[aria-expanded="true"] { background: var(--hover); }
+.pane-label:focus-visible { outline-offset: -2px; }
+#pane-font-menu {
+  position: fixed;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--radius);
+  background: var(--black);
+}
+.font-step {
+  display: grid;
+  place-items: center;
+  inline-size: 32px;
+  block-size: 32px;
+  padding: 0;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.font-step:hover:not(:disabled) { background: var(--hover); }
+.font-step:disabled { opacity: .4; }
+#pane-font-value {
+  min-inline-size: 39px;
+  text-align: center;
+  font-size: .75rem;
+  font-variant-numeric: tabular-nums;
+}
 .pane-minimize {
   position: relative;
   display: grid;
@@ -331,7 +380,7 @@ button:not(:disabled):active { transform: scale(.96); }
   background: var(--selected);
 }
 #app[data-dragging="true"] { cursor: grabbing; user-select: none; }
-#app[data-dragging="true"] .pane-bar, #app[data-dragging="true"] .tab-select { cursor: grabbing; }
+#app[data-dragging="true"] :is(.pane-bar, .pane-label, .tab-select) { cursor: grabbing; }
 .terminal-content .xterm-helpers .xterm-helper-textarea {
   font-size: 16px !important;
 }
@@ -456,7 +505,7 @@ dialog::backdrop { background: transparent; }
 @media (max-width: 560px) {
   #session-sidebar { --rail-width: 79px; }
   .sidebar-content { padding-inline: 4px 3px; }
-  .tab-row { inline-size: calc(100% - 10px); min-block-size: 42px; }
+  .tab-row { min-block-size: 42px; }
   .tab-select { padding-inline: 4px; font-size: .6875rem; }
   .tab-close { inline-size: 25px; }
   .terminal-with-padding { padding-inline-start: 5px; }
@@ -518,6 +567,15 @@ dialog::backdrop { background: transparent; }
   <div id="soft-keys" role="group" aria-label="Terminal keyboard controls" hidden></div>
   <div id="announcement" class="visually-hidden" role="status"></div>
 </div>
+<div id="pane-font-menu" role="group" aria-label="Terminal text size" hidden>
+  <button id="pane-font-smaller" class="font-step" type="button" aria-label="Decrease text size">
+    <svg class="control-icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#icon-minus" /></svg>
+  </button>
+  <output id="pane-font-value" aria-live="polite"></output>
+  <button id="pane-font-larger" class="font-step" type="button" aria-label="Increase text size">
+    <svg class="control-icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#icon-plus" /></svg>
+  </button>
+</div>
 <dialog id="connect-dialog" aria-label="Connect to SSH">
   <form id="connect-form" class="modal-panel" tabindex="-1" autofocus novalidate>
     <input id="endpoint" class="field" type="text" placeholder="Browser terminal link"
@@ -566,6 +624,9 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   const dockTargets = $('dock-targets');
   const softKeys = $('soft-keys');
   const sidebarToggle = $('toggle-sessions');
+  const fontMenu = $('pane-font-menu');
+  const smallerFont = $('pane-font-smaller');
+  const largerFont = $('pane-font-larger');
   const statusButton = $('session-status');
   const connectDialog = $('connect-dialog');
   const closeDialog = $('close-dialog');
@@ -577,6 +638,8 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   const mobile = matchMedia('(any-pointer: coarse)');
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   const encoder = new TextEncoder();
+  const minFontSize = 8;
+  const maxFontSize = 32;
   const dividerSize = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--divider-size'));
   const sshUser = /^[A-Za-z_][A-Za-z0-9_.-]{0,63}$/;
   const tunnelHost = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.trycloudflare\.com$/;
@@ -589,6 +652,8 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   const visiblePanes = new Map();
   let drag = null;
   let suppressClick = null;
+  let fontSession = null;
+  let touchCloseRow = null;
   let sidebarOpen = false;
   let intake = null;
   let closingSession = null;
@@ -657,7 +722,71 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     fitFrame = requestAnimationFrame(() => {
       fitFrame = 0;
       for (const session of visiblePanes.keys()) fitTerminal(session);
+      positionFontMenu();
     });
+  }
+
+  function positionFontMenu() {
+    if (!fontSession) return;
+    const viewport = window.visualViewport;
+    const left = viewport?.offsetLeft ?? 0;
+    const top = viewport?.offsetTop ?? 0;
+    const right = left + (viewport?.width ?? innerWidth);
+    const bottom = app.getBoundingClientRect().bottom;
+    const anchor = fontSession.paneLabel.getBoundingClientRect();
+    const maxTop = bottom - fontMenu.offsetHeight - 6;
+    const below = anchor.bottom + 3;
+    const preferredTop = below <= maxTop ? below : anchor.top - fontMenu.offsetHeight - 3;
+    fontMenu.style.left = Math.max(left + 6, Math.min(anchor.left, right - fontMenu.offsetWidth - 6)) + 'px';
+    fontMenu.style.top = Math.max(top + 6, Math.min(preferredTop, maxTop)) + 'px';
+  }
+
+  function closeFontMenu(restoreFocus = false) {
+    if (!fontSession) return;
+    const trigger = fontSession.paneLabel;
+    fontSession = null;
+    trigger.setAttribute('aria-expanded', 'false');
+    fontMenu.hidden = true;
+    if (restoreFocus) trigger.focus({preventScroll: true});
+  }
+
+  function updateFontMenu() {
+    const size = fontSession.term.options.fontSize;
+    $('pane-font-value').textContent = size + ' px';
+    smallerFont.disabled = size <= minFontSize;
+    largerFont.disabled = size >= maxFontSize;
+  }
+
+  function toggleFontMenu(session) {
+    if (fontSession === session) {
+      closeFontMenu();
+      return;
+    }
+    closeFontMenu();
+    setActive(session);
+    fontSession = session;
+    session.paneLabel.setAttribute('aria-expanded', 'true');
+    updateFontMenu();
+    fontMenu.hidden = false;
+    positionFontMenu();
+    (smallerFont.disabled ? largerFont : smallerFont).focus({preventScroll: true});
+  }
+
+  function changeFontSize(delta) {
+    if (!fontSession) return;
+    const options = fontSession.term.options;
+    options.fontSize = Math.min(maxFontSize, Math.max(minFontSize, options.fontSize + delta));
+    const button = document.activeElement;
+    updateFontMenu();
+    if (button === smallerFont && smallerFont.disabled) largerFont.focus({preventScroll: true});
+    if (button === largerFont && largerFont.disabled) smallerFont.focus({preventScroll: true});
+    scheduleFit();
+  }
+
+  function showTouchClose(row = null) {
+    if (touchCloseRow) delete touchCloseRow.dataset.touchClose;
+    touchCloseRow = row;
+    if (row) row.dataset.touchClose = 'true';
   }
 
   function isSplit(node) { return Boolean(node?.axis); }
@@ -723,11 +852,11 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   }
 
   function renderPanes() {
+    closeFontMenu();
     visiblePanes.clear();
     function build(node, parentAxis = null) {
       if (!isSplit(node)) {
         visiblePanes.set(node, parentAxis);
-        node.paneBar.hidden = !parentAxis;
         node.panel.setAttribute('role', parentAxis ? 'region' : 'tabpanel');
         return node.panel;
       }
@@ -752,8 +881,8 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
       const selected = item === active;
       item.row.dataset.selected = String(selected);
       item.tab.setAttribute('aria-selected', String(selected));
-      item.tab.tabIndex = selected ? 0 : -1;
-      item.close.hidden = !selected;
+      item.tab.tabIndex = selected || (!active && item === sessions[0]) ? 0 : -1;
+      item.close.tabIndex = selected ? 0 : -1;
       item.panel.dataset.active = String(selected);
     }
     if (session && focus && (!mobile.matches || keyboardOpen)) session.term.focus();
@@ -765,7 +894,11 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   function minimizePane(session) {
     paneLayout = replacePane(paneLayout, session, null);
     renderPanes();
-    if (active === session) setActive(firstPane(paneLayout), true);
+    if (active === session) {
+      const next = firstPane(paneLayout);
+      setActive(next, true);
+      if (!next) (sidebarOpen ? session.tab : sidebarToggle).focus({preventScroll: true});
+    }
   }
 
   function dockSession(session, target, axis, insertFirst) {
@@ -838,15 +971,28 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     }
   }
 
-  function beginDrag(event, session) {
+  function beginDrag(event, session, revealClose = false) {
     if (event.button !== 0 || !event.isPrimary) return;
     drag = {session, pointer: event.pointerId, x: event.clientX, y: event.clientY,
       handle: event.target, moved: false, position: null};
+    if (revealClose && event.pointerType === 'touch') {
+      const gesture = drag;
+      drag.holdTimer = setTimeout(() => {
+        if (drag !== gesture) return;
+        gesture.held = true;
+        showTouchClose(session.row);
+      }, 450);
+    }
   }
 
   function moveDrag(event) {
     if (!drag || drag.pointer !== event.pointerId) return;
     if (!drag.moved && Math.hypot(drag.x - event.clientX, drag.y - event.clientY) < 6) return;
+    if (!drag.moved) {
+      clearTimeout(drag.holdTimer);
+      showTouchClose();
+      closeFontMenu();
+    }
     drag.moved = true;
     app.dataset.dragging = 'true';
     if (event.cancelable) event.preventDefault();
@@ -860,13 +1006,15 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
 
   function finishDrag(event) {
     if (!drag || drag.pointer !== event.pointerId) return;
-    const {session, moved, handle} = drag;
+    const {session, moved, handle, held, holdTimer} = drag;
+    clearTimeout(holdTimer);
     drag = null;
     delete app.dataset.dragging;
     dockTargets.hidden = true;
-    if (!moved) return;
+    if (!moved && !held) return;
     suppressClick = handle;
     setTimeout(() => { if (suppressClick === handle) suppressClick = null; }, 80);
+    if (!moved) return;
     const position = event.type === 'pointerup' && dockPosition(session, event.clientX, event.clientY);
     if (position) dockSession(session, position.target, position.axis, position.first);
   }
@@ -874,6 +1022,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   function toggleSidebar(open) {
     sidebarOpen = open;
     sidebar.inert = !open;
+    if (!open) showTouchClose();
     app.dataset.sidebarOpen = String(open);
     sidebarToggle.setAttribute('aria-expanded', String(open));
     const action = open ? 'Hide sessions' : 'Show sessions';
@@ -904,6 +1053,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     session.user = user;
     session.tab.textContent = session.id + ' ' + user;
     session.paneLabel.textContent = session.tab.textContent;
+    session.paneLabel.setAttribute('aria-label', 'Text size for session ' + session.id + ', ' + user);
     session.tab.title = user + '@' + host;
     session.tab.setAttribute('aria-label', 'Session ' + session.id + ', ' + user + ' at ' + host);
     session.close.setAttribute('aria-label', 'Close session ' + session.id + ', ' + user);
@@ -916,7 +1066,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     const close = document.createElement('button');
     const panel = document.createElement('section');
     const paneBar = document.createElement('div');
-    const paneLabel = document.createElement('span');
+    const paneLabel = document.createElement('button');
     const minimize = document.createElement('button');
     const frame = document.createElement('div');
     const content = document.createElement('div');
@@ -934,8 +1084,10 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     panel.setAttribute('aria-labelledby', tab.id);
     tab.setAttribute('aria-controls', panel.id);
     paneBar.className = 'pane-bar';
-    paneBar.hidden = true;
     paneLabel.className = 'pane-label';
+    paneLabel.type = 'button';
+    paneLabel.setAttribute('aria-controls', fontMenu.id);
+    paneLabel.setAttribute('aria-expanded', 'false');
     minimize.className = 'pane-minimize';
     minimize.type = 'button';
     minimize.setAttribute('aria-label', 'Minimize session ' + id);
@@ -965,7 +1117,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     });
     const fit = new FitAddon();
     const session = {
-      id, row, tab, close, panel, paneBar, paneLabel, term, fit, user,
+      id, row, tab, close, panel, paneLabel, term, fit, user,
       state: 'offline', socket: null, timer: 0, lastSize: ''
     };
     sessions.push(session);
@@ -975,10 +1127,14 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     term.open(content);
 
     tab.addEventListener('click', () => setActive(session, true));
-    tab.addEventListener('pointerdown', event => beginDrag(event, session));
-    paneBar.addEventListener('pointerdown', event => {
-      if (!event.target.closest('button')) beginDrag(event, session);
+    tab.addEventListener('pointerdown', event => beginDrag(event, session, true));
+    tab.addEventListener('contextmenu', event => {
+      if (event.pointerType === 'touch' || (!event.pointerType && mobile.matches)) event.preventDefault();
     });
+    paneBar.addEventListener('pointerdown', event => {
+      if (!event.target.closest('.pane-minimize')) beginDrag(event, session);
+    });
+    paneLabel.addEventListener('click', () => toggleFontMenu(session));
     paneBar.addEventListener('click', event => {
       if (!event.target.closest('button')) setActive(session, true);
     });
@@ -1034,6 +1190,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     if (index < 0) return;
     endSocket(session);
     sessions.splice(index, 1);
+    if (touchCloseRow === session.row) showTouchClose();
     paneLayout = previousLayout ?? replacePane(paneLayout, session, null);
     session.term.dispose();
     session.row.remove();
@@ -1065,6 +1222,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
 
   function showDialog(dialog) {
     if (dialog.open) return;
+    closeFontMenu();
     dialog.showModal();
     fade(dialog, 0, 1).catch(() => {});
     updateViewport();
@@ -1221,6 +1379,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     app.dataset.keyboard = String(keyboardOpen);
     softKeys.hidden = !(keyboardOpen && active?.state === 'online'
       && document.activeElement === active.term.textarea && !connectDialog.open && !closeDialog.open);
+    positionFontMenu();
   }
 
   const cursorKeys = new Map([
@@ -1346,6 +1505,8 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   for (const id of ['add-session', 'add-sidebar-session']) {
     $(id).addEventListener('click', () => openConnect());
   }
+  smallerFont.addEventListener('click', () => changeFontSize(-1));
+  largerFont.addEventListener('click', () => changeFontSize(1));
   statusButton.addEventListener('click', () => openConnect(active?.state === 'offline' ? active : null));
   $('keep-session').addEventListener('click', dismissClose);
   $('close-session').addEventListener('click', async () => {
@@ -1357,8 +1518,8 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     live('Session ' + session.id + ' closed.');
   });
   tabs.addEventListener('keydown', event => {
-    if (event.target.getAttribute('role') !== 'tab' || !active) return;
-    const index = sessions.indexOf(active);
+    const index = sessions.findIndex(session => session.tab === event.target);
+    if (index < 0) return;
     let next;
     if (event.key === 'ArrowUp') next = (index + sessions.length - 1) % sessions.length;
     else if (event.key === 'ArrowDown') next = (index + 1) % sessions.length;
@@ -1372,10 +1533,21 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   addEventListener('pointermove', moveDrag, {passive: false});
   addEventListener('pointerup', finishDrag);
   addEventListener('pointercancel', finishDrag);
+  document.addEventListener('pointerdown', event => {
+    if (fontSession && !fontMenu.contains(event.target) && !fontSession.paneLabel.contains(event.target)) {
+      closeFontMenu();
+    }
+    if (touchCloseRow && !touchCloseRow.contains(event.target)) showTouchClose();
+  }, true);
   addEventListener('keydown', event => {
-    if (event.key === 'Escape' && drag?.moved) {
+    if (event.key !== 'Escape') return;
+    if (drag?.moved) {
       event.preventDefault();
       finishDrag({type: 'pointercancel', pointerId: drag.pointer});
+    } else if (fontSession) {
+      event.preventDefault();
+      event.stopPropagation();
+      closeFontMenu(true);
     }
   }, true);
   document.addEventListener('click', event => {
@@ -1401,7 +1573,12 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   window.visualViewport?.addEventListener('resize', updateViewport);
   window.visualViewport?.addEventListener('scroll', updateViewport);
   navigator.virtualKeyboard?.addEventListener('geometrychange', updateViewport);
-  document.addEventListener('focusin', updateViewport);
+  document.addEventListener('focusin', event => {
+    if (fontSession && !fontMenu.contains(event.target) && !fontSession.paneLabel.contains(event.target)) {
+      closeFontMenu();
+    }
+    updateViewport();
+  });
   document.addEventListener('focusout', () => requestAnimationFrame(updateViewport));
   new ResizeObserver(scheduleFit).observe(terminals);
   // Safari can dispatch proprietary gestures even when scaling is disabled in the viewport.
