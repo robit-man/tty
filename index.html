@@ -125,6 +125,7 @@ button:not(:disabled):active { transform: scale(.96); }
 }
 .icon-button:hover { background: var(--hover); }
 #toggle-sessions { margin-inline-end: auto; }
+#add-session { touch-action: none; user-select: none; -webkit-touch-callout: none; }
 #toggle-sessions svg {
   inline-size: 16px;
   block-size: 16px;
@@ -171,7 +172,6 @@ button:not(:disabled):active { transform: scale(.96); }
   inline-size: var(--rail-width);
   block-size: 100%;
   padding: 3px 5px 10px 7px;
-  border-inline-end: 1px solid var(--edge);
   overflow: auto;
   overscroll-behavior: contain;
   transform: translateX(-100%);
@@ -380,7 +380,7 @@ button:not(:disabled):active { transform: scale(.96); }
   background: var(--selected);
 }
 #app[data-dragging="true"] { cursor: grabbing; user-select: none; }
-#app[data-dragging="true"] :is(.pane-bar, .pane-label, .tab-select) { cursor: grabbing; }
+#app[data-dragging="true"] :is(.pane-bar, .pane-label, .tab-select, #add-session) { cursor: grabbing; }
 .terminal-content .xterm-helpers .xterm-helper-textarea {
   font-size: 16px !important;
 }
@@ -437,6 +437,8 @@ dialog[open] {
   overflow: auto;
 }
 dialog::backdrop { background: transparent; }
+#connect-dialog[open] { align-items: start; }
+#connect-form { margin-block-start: var(--connect-offset, 0px); }
 .modal-panel {
   display: grid;
   gap: var(--gap);
@@ -469,6 +471,37 @@ dialog::backdrop { background: transparent; }
   background: var(--hover);
   border-color: var(--edge-strong);
 }
+#recents { position: relative; min-inline-size: 0; }
+#recents-toggle[aria-expanded="true"] { background: var(--selected); }
+#recent-list {
+  position: absolute;
+  z-index: 2;
+  inset: calc(100% + 4px) 0 auto;
+  max-block-size: min(238px, max(76px, var(--recents-room, 238px)));
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--radius);
+  background: var(--black);
+}
+.recent-item, #clear-recents {
+  display: grid;
+  gap: 1px;
+  inline-size: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  text-align: start;
+  font-size: .875rem;
+}
+.recent-item:hover, #clear-recents:hover { background: var(--hover); }
+.recent-item:focus-visible, #clear-recents:focus-visible { outline-offset: -2px; }
+.recent-host, #clear-recents, #recent-empty { color: var(--muted); font-size: .75rem; }
+.recent-host { overflow-wrap: anywhere; }
+#recent-empty { margin: 0; padding: 8px 9px; }
+#clear-recents { margin-block-start: 4px; }
 #connect-error {
   margin: 0;
   padding: 0 3px;
@@ -578,6 +611,15 @@ dialog::backdrop { background: transparent; }
 </div>
 <dialog id="connect-dialog" aria-label="Connect to SSH">
   <form id="connect-form" class="modal-panel" tabindex="-1" autofocus novalidate>
+    <div id="recents">
+      <button id="recents-toggle" class="modal-button" type="button" aria-controls="recent-list"
+          aria-expanded="false">Recents</button>
+      <div id="recent-list" role="group" aria-label="Recent SSH sessions" hidden>
+        <div id="recent-items"></div>
+        <p id="recent-empty">No recent sessions</p>
+        <button id="clear-recents" type="button" hidden>Clear recents</button>
+      </div>
+    </div>
     <input id="endpoint" class="field" type="text" placeholder="Browser terminal link"
         aria-label="Browser terminal link" inputmode="url" autocomplete="off"
         autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="next" required>
@@ -628,6 +670,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   const smallerFont = $('pane-font-smaller');
   const largerFont = $('pane-font-larger');
   const statusButton = $('session-status');
+  const addButton = $('add-session');
   const connectDialog = $('connect-dialog');
   const closeDialog = $('close-dialog');
   const form = $('connect-form');
@@ -635,6 +678,10 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   const username = $('username');
   const connectButton = $('connect');
   const connectError = $('connect-error');
+  const recents = $('recents');
+  const recentToggle = $('recents-toggle');
+  const recentList = $('recent-list');
+  const clearRecents = $('clear-recents');
   const mobile = matchMedia('(any-pointer: coarse)');
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   const encoder = new TextEncoder();
@@ -644,6 +691,8 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   const sshUser = /^[A-Za-z_][A-Za-z0-9_.-]{0,63}$/;
   const tunnelHost = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.trycloudflare\.com$/;
   const tunnelToken = /^[A-Za-z0-9_-]{32,128}$/;
+  const recentKey = 'tty-recent-sessions';
+  const recentLimit = 8;
   const sessions = [];
   const modifiers = {Ctrl: false, Shift: false, Alt: false};
   const modifierButtons = new Map();
@@ -656,6 +705,8 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   let touchCloseRow = null;
   let sidebarOpen = false;
   let intake = null;
+  let connectAnchor = null;
+  let recentSessions = [];
   let closingSession = null;
   let nextSession = 1;
   let fitFrame = 0;
@@ -684,6 +735,67 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     } catch (_) {
       return null;
     }
+  }
+
+  function readRecents() {
+    try {
+      const records = JSON.parse(localStorage.getItem(recentKey));
+      if (!Array.isArray(records)) return [];
+      return records.filter(entry => entry && typeof entry.link === 'string' && parseLink(entry.link)
+        && typeof entry.user === 'string' && sshUser.test(entry.user)).slice(0, recentLimit);
+    } catch (_) {
+      return recentSessions;
+    }
+  }
+
+  function storeRecents(records) {
+    recentSessions = records;
+    try {
+      if (records.length) localStorage.setItem(recentKey, JSON.stringify(records));
+      else localStorage.removeItem(recentKey);
+    } catch (_) {}
+  }
+
+  function rememberRecent(link, user) {
+    const host = parseLink(link).host;
+    const remaining = readRecents().filter(entry => entry.user !== user || parseLink(entry.link).host !== host);
+    storeRecents([{link, user}, ...remaining].slice(0, recentLimit));
+  }
+
+  function fillRecent(entry) {
+    endpoint.value = entry.link;
+    username.value = entry.user;
+    reportConnectError('');
+    toggleRecents(false);
+    renderForm();
+    connectButton.focus({preventScroll: true});
+  }
+
+  function renderRecents() {
+    recentSessions = readRecents();
+    const buttons = recentSessions.map(entry => {
+      const button = document.createElement('button');
+      const name = document.createElement('span');
+      const host = document.createElement('span');
+      button.type = 'button';
+      button.className = 'recent-item';
+      name.textContent = entry.user;
+      host.className = 'recent-host';
+      host.textContent = parseLink(entry.link).host;
+      button.append(name, host);
+      button.addEventListener('click', () => fillRecent(entry));
+      return button;
+    });
+    $('recent-items').replaceChildren(...buttons);
+    $('recent-empty').hidden = buttons.length > 0;
+    clearRecents.hidden = buttons.length === 0;
+  }
+
+  function toggleRecents(open) {
+    if (open) renderRecents();
+    recentList.hidden = !open;
+    recentToggle.setAttribute('aria-expanded', String(open));
+    positionConnectPanel();
   }
 
   function updateStatus() {
@@ -901,14 +1013,14 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     }
   }
 
-  function dockSession(session, target, axis, insertFirst) {
+  function dockSession(session, target, axis, insertFirst, focus = true) {
     if (session === target) return;
     paneLayout = replacePane(paneLayout, session, null);
     const split = {axis, ratio: .5,
       first: insertFirst ? session : target, second: insertFirst ? target : session};
     paneLayout = replacePane(paneLayout, target, split);
     renderPanes();
-    setActive(session, true);
+    setActive(session, focus);
   }
 
   function dockRegions(source) {
@@ -929,6 +1041,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     }
     const base = terminals.getBoundingClientRect();
     if (layout) visit(layout, base.left, base.top, base.width, base.height);
+    else if (!source) visit(null, base.left, base.top, base.width, base.height);
     return regions;
   }
 
@@ -937,6 +1050,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     for (const rect of regions) {
       if (!rect.width || !rect.height || x < rect.left || x > rect.left + rect.width
           || y < rect.top || y > rect.top + rect.height) continue;
+      if (!rect.target) return {target: null, axis: null, first: true, regions};
       const across = (x - rect.left) / rect.width;
       const down = (y - rect.top) / rect.height;
       const axis = rect.parentAxis ? (rect.parentAxis === 'row' ? 'column' : 'row')
@@ -955,8 +1069,8 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
       const axis = rect.parentAxis ? (rect.parentAxis === 'row' ? 'column' : 'row') : position.axis;
       const row = axis === 'row';
       const width = row ? rect.width / 2 : rect.width;
-      const height = row ? rect.height : rect.height / 2;
-      for (const first of [true, false]) {
+      const height = axis === 'column' ? rect.height / 2 : rect.height;
+      for (const first of axis ? [true, false] : [true]) {
         const zone = document.createElement('div');
         zone.className = 'dock-target';
         zone.dataset.highlight = String(rect.target === position.target && first === position.first);
@@ -974,7 +1088,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   function beginDrag(event, session, revealClose = false) {
     if (event.button !== 0 || !event.isPrimary) return;
     drag = {session, pointer: event.pointerId, x: event.clientX, y: event.clientY,
-      handle: event.target, moved: false, position: null};
+      handle: session ? event.target : addButton, moved: false, position: null};
     if (revealClose && event.pointerType === 'touch') {
       const gesture = drag;
       drag.holdTimer = setTimeout(() => {
@@ -1016,7 +1130,9 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     setTimeout(() => { if (suppressClick === handle) suppressClick = null; }, 80);
     if (!moved) return;
     const position = event.type === 'pointerup' && dockPosition(session, event.clientX, event.clientY);
-    if (position) dockSession(session, position.target, position.axis, position.first);
+    if (!position) return;
+    if (session) dockSession(session, position.target, position.axis, position.first);
+    else openConnect(null, true, position);
   }
 
   function toggleSidebar(open) {
@@ -1059,7 +1175,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     session.close.setAttribute('aria-label', 'Close session ' + session.id + ', ' + user);
   }
 
-  function addSession(user, host) {
+  function addSession(user, host, placement) {
     const id = nextSession;
     const row = document.createElement('div');
     const tab = document.createElement('button');
@@ -1122,7 +1238,11 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     };
     sessions.push(session);
     changeSessionLabel(session, user, host);
-    setActive(session);
+    if (placement?.target && visiblePanes.has(placement.target)) {
+      dockSession(session, placement.target, placement.axis, placement.first, false);
+    } else {
+      setActive(session);
+    }
     term.loadAddon(fit);
     term.open(content);
 
@@ -1203,6 +1323,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   function renderForm() {
     const busy = Boolean(intake?.pending);
     endpoint.disabled = username.disabled = busy;
+    recentToggle.disabled = busy;
     connectButton.disabled = busy || !parseLink(endpoint.value) || !sshUser.test(username.value.trim());
     connectButton.setAttribute('aria-busy', String(busy));
     $('spinner').hidden = !busy;
@@ -1212,6 +1333,25 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   function reportConnectError(message) {
     connectError.textContent = message;
     connectError.hidden = !message;
+  }
+
+  function positionConnectPanel() {
+    if (!connectDialog.open) return;
+    const bounds = connectDialog.getBoundingClientRect();
+    const padding = Number.parseFloat(getComputedStyle(connectDialog).paddingTop);
+    const latestCenter = bounds.top + bounds.height / 2;
+    if (!mobile.matches || connectAnchor === null) {
+      connectAnchor = keyboardOpen ? normalHeight / 2 : latestCenter;
+    }
+    const panelHeight = form.offsetHeight;
+    const desiredTop = connectAnchor - bounds.top - panelHeight / 2;
+    const lastTop = Math.max(padding, bounds.height - panelHeight - padding);
+    const top = Math.max(padding, Math.min(desiredTop, lastTop));
+    form.style.setProperty('--connect-offset', (top - padding) + 'px');
+    if (!recentList.hidden) {
+      const room = bounds.bottom - recentToggle.getBoundingClientRect().bottom - 12;
+      recentList.style.setProperty('--recents-room', room + 'px');
+    }
   }
 
   function fade(dialog, from, to) {
@@ -1239,15 +1379,18 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     updateViewport();
   }
 
-  function openConnect(reuse = null, focus = true) {
+  function openConnect(reuse = null, focus = true, placement = null) {
     if (connectDialog.open || closeDialog.open) return;
-    intake = {reuse, previous: active, previousLayout: paneLayout, pending: null};
+    intake = {reuse, placement, previous: active, previousLayout: paneLayout, pending: null};
+    connectAnchor = null;
+    toggleRecents(false);
     endpoint.value = '';
     username.value = reuse?.user || active?.user || lastUser;
     reportConnectError('');
     renderForm();
     showDialog(connectDialog);
-    if (focus && !mobile.matches) endpoint.focus();
+    connectDialog.scrollTop = 0;
+    if (focus && !mobile.matches) endpoint.focus({preventScroll: true});
   }
 
   function undoAttempt(view) {
@@ -1266,6 +1409,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     if (!intake) return;
     if (!connected) undoAttempt(intake);
     intake = null;
+    toggleRecents(false);
     endpoint.value = '';
     await hideDialog(connectDialog);
     if (connected && !mobile.matches) active?.term.focus();
@@ -1273,10 +1417,12 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
 
   function startConnect(destination, user) {
     const view = intake;
-    const session = view.reuse || addSession(user, destination.host);
+    const session = view.reuse || addSession(user, destination.host, view.placement);
+    const recentLink = 'https://' + destination.host + '/#tty=' + destination.token;
     view.pending = session;
     session.state = 'connecting';
     updateStatus();
+    toggleRecents(false);
     renderForm();
     fitTerminal();
 
@@ -1285,7 +1431,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
       undoAttempt(view);
       reportConnectError(message);
       renderForm();
-      if (!mobile.matches) endpoint.focus();
+      if (!mobile.matches) endpoint.focus({preventScroll: true});
     }
 
     let socket;
@@ -1327,6 +1473,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
         changeSessionLabel(session, user, destination.host);
         lastUser = user;
         try { localStorage.setItem('tty-last-user', user); } catch (_) {}
+        rememberRecent(recentLink, user);
         updateStatus();
         live('Session ' + session.id + ' connected.');
         fitTerminal();
@@ -1367,6 +1514,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     if (Math.abs(width - lastWidth) > 24) {
       normalHeight = visibleHeight;
       lastWidth = width;
+      connectAnchor = null;
     }
     const layoutHeight = document.documentElement.clientHeight;
     normalHeight = Math.max(normalHeight, height, layoutHeight);
@@ -1379,6 +1527,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     app.dataset.keyboard = String(keyboardOpen);
     softKeys.hidden = !(keyboardOpen && active?.state === 'online'
       && document.activeElement === active.term.textarea && !connectDialog.open && !closeDialog.open);
+    positionConnectPanel();
     positionFontMenu();
   }
 
@@ -1502,9 +1651,15 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   dismissOnOutside(connectDialog, () => dismissConnect());
   dismissOnOutside(closeDialog, dismissClose);
   sidebarToggle.addEventListener('click', () => toggleSidebar(!sidebarOpen));
-  for (const id of ['add-session', 'add-sidebar-session']) {
-    $(id).addEventListener('click', () => openConnect());
-  }
+  addButton.addEventListener('click', () => openConnect());
+  addButton.addEventListener('pointerdown', event => beginDrag(event, null));
+  $('add-sidebar-session').addEventListener('click', () => openConnect());
+  recentToggle.addEventListener('click', () => toggleRecents(recentList.hidden));
+  clearRecents.addEventListener('click', () => {
+    storeRecents([]);
+    renderRecents();
+    recentToggle.focus({preventScroll: true});
+  });
   smallerFont.addEventListener('click', () => changeFontSize(-1));
   largerFont.addEventListener('click', () => changeFontSize(1));
   statusButton.addEventListener('click', () => openConnect(active?.state === 'offline' ? active : null));
@@ -1538,6 +1693,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
       closeFontMenu();
     }
     if (touchCloseRow && !touchCloseRow.contains(event.target)) showTouchClose();
+    if (!recentList.hidden && !recents.contains(event.target)) toggleRecents(false);
   }, true);
   addEventListener('keydown', event => {
     if (event.key !== 'Escape') return;
@@ -1548,10 +1704,15 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
       event.preventDefault();
       event.stopPropagation();
       closeFontMenu(true);
+    } else if (!recentList.hidden) {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleRecents(false);
+      recentToggle.focus({preventScroll: true});
     }
   }, true);
   document.addEventListener('click', event => {
-    if (suppressClick === event.target) {
+    if (suppressClick === event.target || (suppressClick === addButton && addButton.contains(event.target))) {
       suppressClick = null;
       event.preventDefault();
       event.stopPropagation();
@@ -1577,10 +1738,12 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     if (fontSession && !fontMenu.contains(event.target) && !fontSession.paneLabel.contains(event.target)) {
       closeFontMenu();
     }
+    if (!recentList.hidden && !recents.contains(event.target)) toggleRecents(false);
     updateViewport();
   });
   document.addEventListener('focusout', () => requestAnimationFrame(updateViewport));
   new ResizeObserver(scheduleFit).observe(terminals);
+  new ResizeObserver(positionConnectPanel).observe(form);
   // Safari can dispatch proprietary gestures even when scaling is disabled in the viewport.
   for (const type of ['gesturestart', 'gesturechange']) {
     document.addEventListener(type, event => event.preventDefault(), {passive: false});
