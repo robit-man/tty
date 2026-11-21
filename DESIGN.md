@@ -2,7 +2,7 @@
 
 ## Direction
 
-The terminal fills a black viewport. The connection form opens in a modal. The upper-right plus and connection dot remain visible during use. The session rail has a thin divider, with extra width and a close button on the selected tab. Its caret sits on the left when expanded and moves beside the plus when collapsed. The terminal fills the available width with the rail collapsed. The keyboard controls appear next to the on-screen keyboard when the terminal has focus.
+The terminal fills a black viewport. The connection form opens in a modal. The upper-right plus and connection dot remain visible during use. The session rail has a thin divider, with extra width and a close button on the selected tab. A centered plus entry opens the connection modal. The caret stays on the left while the rail slides in or out. The terminal fills the available width with the rail collapsed. The keyboard controls appear next to the on-screen keyboard when the terminal has focus.
 
 ## Tokens
 
@@ -19,7 +19,7 @@ The inline CSS in [index.html](index.html) owns the runtime tokens.
 | Input and dialog button height | 46 px |
 | Inner radius, modal padding, outer radius | 10 px, 12 px, 22 px |
 | Gap between form controls | 8 px |
-| Modal fade | 100 ms with reduced-motion support |
+| Modal fade and sidebar slide | 100 ms with reduced-motion support |
 
 Use the system sans-serif for controls and the built-in monospace stack for terminal output.
 

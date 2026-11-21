@@ -124,33 +124,27 @@ button:not(:disabled):active { transform: scale(.96); }
   background: transparent;
 }
 .icon-button:hover { background: var(--hover); }
-#toggle-sessions { order: -1; }
-#app[data-sidebar-open="true"] #toggle-sessions { margin-inline-end: auto; }
+#toggle-sessions { margin-inline-end: auto; }
 #toggle-sessions svg {
   inline-size: 16px;
   block-size: 16px;
   transition: transform var(--fade);
 }
 #toggle-sessions[aria-expanded="true"] svg { transform: rotate(180deg); }
-.plus, .cross {
-  position: relative;
+.control-icon {
   display: block;
-  inline-size: 14px;
-  block-size: 14px;
-  color: #ddd;
+  inline-size: 16px;
+  block-size: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
 }
-.plus::before, .plus::after, .cross::before, .cross::after {
-  content: "";
-  position: absolute;
-  inset: calc(50% - .75px) 0 auto;
-  block-size: 1.5px;
-  border-radius: 1px;
-  background: currentColor;
+.tab-close .control-icon, .pane-minimize .control-icon {
+  inline-size: 13px;
+  block-size: 13px;
 }
-.plus::after { transform: rotate(90deg); }
-.cross { inline-size: 10px; block-size: 10px; }
-.cross::before { transform: rotate(45deg); }
-.cross::after { transform: rotate(-45deg); }
+.icon-definitions { position: absolute; pointer-events: none; }
 .status-dot {
   inline-size: 8px;
   block-size: 8px;
@@ -166,16 +160,25 @@ button:not(:disabled):active { transform: scale(.96); }
   min-block-size: 0;
   min-inline-size: 0;
 }
-#tabs {
+#session-sidebar {
   --rail-width: 110px;
-  inline-size: var(--rail-width);
+  inline-size: 0;
   flex: none;
-  align-self: stretch;
+  overflow: hidden;
+  transition: inline-size var(--fade) ease-out;
+}
+.sidebar-content {
+  inline-size: var(--rail-width);
+  block-size: 100%;
   padding: 3px 5px 10px 7px;
   border-inline-end: 1px solid var(--edge);
   overflow: auto;
   overscroll-behavior: contain;
+  transform: translateX(-100%);
+  transition: transform var(--fade) ease-out;
 }
+#app[data-sidebar-open="true"] #session-sidebar { inline-size: var(--rail-width); }
+#app[data-sidebar-open="true"] .sidebar-content { transform: translateX(0); }
 .tab-row {
   display: flex;
   inline-size: calc(100% - 19px);
@@ -192,6 +195,14 @@ button:not(:disabled):active { transform: scale(.96); }
   border-color: var(--edge-strong);
   background: var(--hover);
 }
+.sidebar-add {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: #d2d2d2;
+}
+.sidebar-add:hover { background: var(--hover); border-color: var(--edge-strong); }
+.sidebar-add:focus-visible { outline-offset: -3px; }
 .tab-select, .tab-close {
   min-inline-size: 0;
   border: 0;
@@ -281,12 +292,6 @@ button:not(:disabled):active { transform: scale(.96); }
   background: transparent;
 }
 .pane-minimize:hover { background: var(--hover); }
-.pane-minimize::before {
-  content: "";
-  inline-size: 9px;
-  block-size: 1px;
-  background: currentColor;
-}
 .pane-divider {
   position: relative;
   min-inline-size: 0;
@@ -447,7 +452,8 @@ dialog::backdrop { background: transparent; }
   gap: var(--gap);
 }
 @media (max-width: 560px) {
-  #tabs { --rail-width: 79px; padding-inline: 4px 3px; }
+  #session-sidebar { --rail-width: 79px; }
+  .sidebar-content { padding-inline: 4px 3px; }
   .tab-row { inline-size: calc(100% - 10px); min-block-size: 42px; }
   .tab-select { padding-inline: 4px; font-size: .6875rem; }
   .tab-close { inline-size: 25px; }
@@ -469,10 +475,15 @@ dialog::backdrop { background: transparent; }
 </style>
 </head>
 <body>
+<svg class="icon-definitions" width="0" height="0" aria-hidden="true" focusable="false">
+  <symbol id="icon-plus" viewBox="0 0 16 16"><path d="M8 3.5v9M3.5 8h9" /></symbol>
+  <symbol id="icon-minus" viewBox="0 0 16 16"><path d="M3.5 8h9" /></symbol>
+  <symbol id="icon-close" viewBox="0 0 16 16"><path d="m4 4 8 8m0-8-8 8" /></symbol>
+</svg>
 <div id="app">
   <div id="controls">
     <button id="toggle-sessions" class="icon-button" type="button" aria-label="Show sessions"
-        aria-controls="tabs" aria-expanded="false" title="Show sessions">
+        aria-controls="session-sidebar" aria-expanded="false" title="Show sessions">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M6 4l4 4-4 4" />
@@ -480,7 +491,7 @@ dialog::backdrop { background: transparent; }
     </button>
     <button id="add-session" class="icon-button" type="button" aria-label="New session"
         aria-haspopup="dialog" aria-controls="connect-dialog" title="New session">
-      <span class="plus" aria-hidden="true"></span>
+      <svg class="control-icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#icon-plus" /></svg>
     </button>
     <button id="session-status" class="icon-button" type="button" aria-label="Disconnected. Open connection dialog"
         aria-haspopup="dialog" aria-controls="connect-dialog" title="Disconnected">
@@ -488,7 +499,15 @@ dialog::backdrop { background: transparent; }
     </button>
   </div>
   <main id="workspace" aria-label="Terminal workspace">
-    <div id="tabs" role="tablist" aria-label="SSH sessions" aria-orientation="vertical" hidden></div>
+    <aside id="session-sidebar" aria-label="Sessions" inert>
+      <div class="sidebar-content">
+        <div id="tabs" role="tablist" aria-label="SSH sessions" aria-orientation="vertical"></div>
+        <button id="add-sidebar-session" class="tab-row sidebar-add" type="button" aria-label="New session"
+            aria-haspopup="dialog" aria-controls="connect-dialog" title="New session">
+          <svg class="control-icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#icon-plus" /></svg>
+        </button>
+      </div>
+    </aside>
     <div id="terminals">
       <div id="panes"></div>
       <div id="dock-targets" aria-hidden="true" hidden></div>
@@ -538,13 +557,13 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   const $ = id => document.getElementById(id);
   const {Terminal, FitAddon} = window.XTERM_BUNDLE;
   const app = $('app');
+  const sidebar = $('session-sidebar');
   const tabs = $('tabs');
   const terminals = $('terminals');
   const paneArea = $('panes');
   const dockTargets = $('dock-targets');
   const softKeys = $('soft-keys');
   const sidebarToggle = $('toggle-sessions');
-  const addButton = $('add-session');
   const statusButton = $('session-status');
   const connectDialog = $('connect-dialog');
   const closeDialog = $('close-dialog');
@@ -852,13 +871,25 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
 
   function toggleSidebar(open) {
     sidebarOpen = open;
-    tabs.hidden = !open;
+    sidebar.inert = !open;
     app.dataset.sidebarOpen = String(open);
     sidebarToggle.setAttribute('aria-expanded', String(open));
     const action = open ? 'Hide sessions' : 'Show sessions';
     sidebarToggle.setAttribute('aria-label', action);
     sidebarToggle.title = action;
     scheduleFit();
+  }
+
+  function controlIcon(name) {
+    const namespace = 'http://www.w3.org/2000/svg';
+    const icon = document.createElementNS(namespace, 'svg');
+    const use = document.createElementNS(namespace, 'use');
+    icon.classList.add('control-icon');
+    icon.setAttribute('viewBox', '0 0 16 16');
+    icon.setAttribute('aria-hidden', 'true');
+    use.setAttribute('href', '#icon-' + name);
+    icon.append(use);
+    return icon;
   }
 
   function writeBytes(session, bytes) {
@@ -887,7 +918,6 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     const minimize = document.createElement('button');
     const frame = document.createElement('div');
     const content = document.createElement('div');
-    const cross = document.createElement('span');
     row.className = 'tab-row';
     row.setAttribute('role', 'presentation');
     tab.type = close.type = 'button';
@@ -895,9 +925,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     tab.className = 'tab-select';
     tab.setAttribute('role', 'tab');
     close.className = 'tab-close';
-    cross.className = 'cross';
-    cross.setAttribute('aria-hidden', 'true');
-    close.append(cross);
+    close.append(controlIcon('close'));
     panel.id = 'terminal-' + id;
     panel.className = 'terminal-panel';
     panel.setAttribute('role', 'tabpanel');
@@ -910,6 +938,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     minimize.type = 'button';
     minimize.setAttribute('aria-label', 'Minimize session ' + id);
     minimize.title = 'Minimize pane';
+    minimize.append(controlIcon('minus'));
     paneBar.append(paneLabel, minimize);
     frame.className = 'terminal-with-padding';
     content.className = 'terminal-content';
@@ -1312,7 +1341,9 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   dismissOnOutside(connectDialog, () => dismissConnect());
   dismissOnOutside(closeDialog, dismissClose);
   sidebarToggle.addEventListener('click', () => toggleSidebar(!sidebarOpen));
-  addButton.addEventListener('click', () => openConnect());
+  for (const id of ['add-session', 'add-sidebar-session']) {
+    $(id).addEventListener('click', () => openConnect());
+  }
   statusButton.addEventListener('click', () => openConnect(active?.state === 'offline' ? active : null));
   $('keep-session').addEventListener('click', dismissClose);
   $('close-session').addEventListener('click', async () => {
