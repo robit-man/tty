@@ -141,7 +141,7 @@ button:not(:disabled):active { transform: scale(.96); }
   stroke-width: 1.5;
   stroke-linecap: round;
 }
-.tab-close .control-icon, .pane-minimize .control-icon {
+.tab-close .control-icon, :is(.pane-minimize, .pane-close) .control-icon {
   inline-size: 13px;
   block-size: 13px;
 }
@@ -327,7 +327,7 @@ button:not(:disabled):active { transform: scale(.96); }
   font-size: .75rem;
   font-variant-numeric: tabular-nums;
 }
-.pane-minimize {
+:is(.pane-minimize, .pane-close) {
   position: relative;
   display: grid;
   place-items: center;
@@ -339,7 +339,7 @@ button:not(:disabled):active { transform: scale(.96); }
   border-radius: 6px;
   background: transparent;
 }
-.pane-minimize:hover { background: var(--hover); }
+:is(.pane-minimize, .pane-close):hover { background: var(--hover); }
 .pane-divider {
   position: relative;
   min-inline-size: 0;
@@ -773,8 +773,8 @@ dialog::backdrop { background: transparent; }
     <h1 id="close-heading">Close session?</h1>
     <p id="close-detail">The terminal connection will end.</p>
     <div class="confirm-actions">
-      <button id="keep-session" class="modal-button" type="button" autofocus>Cancel</button>
-      <button id="close-session" class="modal-button primary" type="button">Close</button>
+      <button id="keep-session" class="modal-button" type="button">Cancel</button>
+      <button id="close-session" class="modal-button primary" type="button" autofocus>Close</button>
     </div>
   </div>
 </dialog>
@@ -2637,6 +2637,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     const paneActions = document.createElement('div');
     const shareButton = document.createElement('button');
     const minimize = document.createElement('button');
+    const paneClose = document.createElement('button');
     const frame = document.createElement('div');
     const content = document.createElement('div');
     row.className = 'tab-row';
@@ -2662,6 +2663,12 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     minimize.setAttribute('aria-label', 'Minimize session ' + id);
     minimize.title = 'Minimize pane';
     minimize.append(controlIcon('minus'));
+    paneClose.className = 'pane-close';
+    paneClose.type = 'button';
+    paneClose.title = 'Close session';
+    paneClose.setAttribute('aria-label', 'Close terminal pane ' + id);
+    paneClose.setAttribute('aria-haspopup', 'dialog');
+    paneClose.append(controlIcon('close'));
     paneActions.className = 'pane-actions';
     shareButton.className = 'pane-share';
     shareButton.type = 'button';
@@ -2670,7 +2677,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     shareButton.setAttribute('aria-haspopup', 'dialog');
     shareButton.append(controlIcon('qr'));
     shareButton.hidden = true;
-    paneActions.append(shareButton, minimize);
+    paneActions.append(shareButton, minimize, paneClose);
     paneBar.append(paneLabel, paneActions);
     frame.className = 'terminal-with-padding';
     content.className = 'terminal-content';
@@ -2731,13 +2738,15 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     shareButton.addEventListener('click', () => openSharing(session, shareButton));
     frame.addEventListener('pointerdown', () => setActive(session));
     frame.addEventListener('focusin', () => { if (active !== session) setActive(session); });
-    close.addEventListener('click', () => {
+    function requestClose() {
       closingSession = session;
       $('close-detail').textContent = session.state === 'online'
         ? 'The terminal connection will end.'
         : 'The terminal and its scrollback will be removed.';
       showDialog(closeDialog);
-    });
+    }
+    close.addEventListener('click', requestClose);
+    paneClose.addEventListener('click', requestClose);
     term.onData(data => {
       if (!session.guestWrite) writeBytes(session, encoder.encode(session === active ? applyTypedModifiers(data) : data));
     });
