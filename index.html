@@ -3884,10 +3884,11 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
       // Browsers that skip beforeinput leave the field as it was last sent.
       const before = base ?? sent;
       base = null;
-      // Only take over while the field matches what the terminal has.
-      if (before !== sent) {
-        if (before === '') sent = '';
-        else return;
+      // A plain insert at the end is xterm's to send. It also knows when a key
+      // press already sent the character (Shift+letter), so it never doubles.
+      if (before !== sent && before !== '' || field.value === before + (event.data ?? '')) {
+        sent = field.value;
+        return;
       }
       event.stopPropagation();
       const previous = Array.from(sent), next = Array.from(field.value);
