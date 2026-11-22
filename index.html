@@ -705,6 +705,48 @@ dialog::backdrop { background: transparent; }
 }
 .share-peer button { inline-size: auto; block-size: 32px; font-size: .8125rem; }
 .terminal-content { position: relative; -webkit-touch-callout: none; }
+.password-pill {
+  position: absolute;
+  z-index: 3;
+  inset: auto 10px 10px auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  max-inline-size: calc(100% - 20px);
+  padding: 4px;
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--radius);
+  background: rgb(0 0 0 / .9);
+  box-shadow: 0 6px 22px rgb(0 0 0 / .6);
+}
+.password-pill[hidden] { display: none; }
+.password-pill button {
+  min-block-size: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+.password-pill button.primary { background: var(--selected); }
+.password-pill button:hover, .password-pill button:focus-visible { background: var(--hover); }
+.password-pill input {
+  inline-size: min(220px, 60vw);
+  min-block-size: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--edge);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+}
+.password-pill .pill-note { flex-basis: 100%; padding: 2px 6px; color: var(--muted); font-size: 12px; text-align: end; }
+.password-pill .pill-note[data-error="true"] { color: var(--error); }
 #term-menu {
   position: fixed;
   z-index: 8;
@@ -3170,6 +3212,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     wireTouchScroll(session);
     wireSelection(session);
     wireDictation(session);
+    if (!guest) wirePasswordPill(session);
     inputLog?.watch(term.textarea);
     content.append(cursorLayer);
     wireSessionCursor(session);
@@ -3518,7 +3561,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     if (session.resume) session.resume.offset += bytes.length;
     recordTraffic(session, 'rx', bytes.length);
     for (const flow of session.shares) mirrorShareOutput(flow, bytes);
-    session.term.write(bytes);
+    session.term.write(bytes, () => schedulePasswordCheck(session));
   }
 
   function resumeSession(session) {
@@ -3854,6 +3897,200 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
       if (performance.now() - lastTouch < 1000) return;
       showTermMenu(session, event.clientX, event.clientY);
     });
+  }
+
+  // Saved SSH passwords. Each is encrypted with AES-GCM under a key derived
+  // from a Face ID / Touch ID passkey (the WebAuthn PRF extension), so the
+  // stored copy is useless without that passkey and your face or fingerprint.
+  // Nothing is typed until you tap the pill that appears at an SSH prompt.
+  const vaultKey = 'tty-vault';
+  const passwordPrompt = /(?:\S+@\S+'s password|\(\S+@\S+\) Password|^Password|Enter passphrase for key '[^']+'): *$/;
+  const toBase64 = bytes => btoa(String.fromCharCode(...new Uint8Array(bytes)));
+  const fromBase64 = text => Uint8Array.from(atob(text), character => character.charCodeAt(0));
+  const randomBytes = size => crypto.getRandomValues(new Uint8Array(size));
+
+  function readVault() {
+    try {
+      const vault = JSON.parse(localStorage.getItem(vaultKey) || 'null');
+      return vault && typeof vault.id === 'string' && typeof vault.salt === 'string'
+        && vault.entries && typeof vault.entries === 'object' ? vault : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function writeVault(vault) {
+    try { localStorage.setItem(vaultKey, JSON.stringify(vault)); } catch (_) {}
+  }
+
+  async function passkeySecret(vault) {
+    const credential = await navigator.credentials.get({publicKey: {
+      challenge: randomBytes(32), userVerification: 'required', timeout: 60000,
+      allowCredentials: [{type: 'public-key', id: fromBase64(vault.id)}],
+      extensions: {prf: {eval: {first: fromBase64(vault.salt)}}}
+    }});
+    const secret = credential.getClientExtensionResults().prf?.results?.first;
+    if (!secret) throw new Error('This passkey can’t make an encryption key in this browser.');
+    return secret;
+  }
+
+  async function createVault() {
+    const salt = randomBytes(32);
+    const credential = await navigator.credentials.create({publicKey: {
+      rp: {name: 'TTY'},
+      user: {id: randomBytes(16), name: 'TTY saved passwords', displayName: 'TTY saved passwords'},
+      challenge: randomBytes(32),
+      pubKeyCredParams: [{type: 'public-key', alg: -7}, {type: 'public-key', alg: -257}],
+      authenticatorSelection: {authenticatorAttachment: 'platform', residentKey: 'preferred', userVerification: 'required'},
+      timeout: 60000,
+      extensions: {prf: {eval: {first: salt}}}
+    }});
+    const prf = credential.getClientExtensionResults().prf;
+    if (prf?.enabled === false) throw new Error('This device’s passkeys can’t encrypt data.');
+    const vault = {id: toBase64(credential.rawId), salt: toBase64(salt), entries: {}};
+    writeVault(vault);
+    return {vault, secret: prf?.results?.first || null};
+  }
+
+  async function vaultCipher(secret) {
+    const material = await crypto.subtle.importKey('raw', secret, 'HKDF', false, ['deriveKey']);
+    return crypto.subtle.deriveKey(
+      {name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(32), info: encoder.encode('tty ssh password v1')},
+      material, {name: 'AES-GCM', length: 256}, false, ['encrypt', 'decrypt']);
+  }
+
+  async function savePassword(user, password) {
+    let vault = readVault(), secret = null;
+    if (!vault) ({vault, secret} = await createVault());
+    const key = await vaultCipher(secret || await passkeySecret(vault));
+    const iv = randomBytes(12);
+    const data = await crypto.subtle.encrypt({name: 'AES-GCM', iv, additionalData: encoder.encode(user)},
+      key, encoder.encode(password));
+    vault.entries[user] = {iv: toBase64(iv), data: toBase64(data)};
+    writeVault(vault);
+  }
+
+  async function loadPassword(user) {
+    const vault = readVault();
+    const entry = vault?.entries[user];
+    if (!entry) return null;
+    const key = await vaultCipher(await passkeySecret(vault));
+    try {
+      const plain = await crypto.subtle.decrypt({name: 'AES-GCM', iv: fromBase64(entry.iv),
+        additionalData: encoder.encode(user)}, key, fromBase64(entry.data));
+      return new TextDecoder().decode(plain);
+    } catch (_) {
+      throw new Error('The saved password couldn’t be unlocked. Forget it and save it again.');
+    }
+  }
+
+  function forgetPassword(user) {
+    const vault = readVault();
+    if (!vault) return;
+    delete vault.entries[user];
+    writeVault(vault);  // Keep the passkey so the next save reuses it.
+  }
+
+  function schedulePasswordCheck(session) {
+    if (session.passwordFrame) return;
+    session.passwordFrame = requestAnimationFrame(() => {
+      session.passwordFrame = 0;
+      checkPasswordPrompt(session);
+    });
+  }
+
+  function checkPasswordPrompt(session) {
+    const pill = session.passwordPill;
+    if (!pill) return;
+    const buffer = session.term.buffer.active;
+    const line = buffer.getLine(buffer.baseY + buffer.cursorY)?.translateToString(true) || '';
+    const prompting = session.state === 'online' && passwordPrompt.test(line.trimStart());
+    if (!prompting) {
+      if (!pill.hidden && !pill.contains(document.activeElement)) pill.hidden = true;
+      return;
+    }
+    if (pill.hidden) renderPasswordPill(session);
+  }
+
+  function renderPasswordPill(session, mode = null, note = '', error = false) {
+    const pill = session.passwordPill;
+    const saved = Boolean(readVault()?.entries[session.user]);
+    const supported = Boolean(window.PublicKeyCredential && crypto.subtle);
+    mode ||= saved ? 'unlock' : 'offer';
+    pill.replaceChildren();
+    const button = (label, action, primary = false) => {
+      const element = document.createElement('button');
+      element.type = 'button';
+      element.textContent = label;
+      if (primary) element.className = 'primary';
+      element.addEventListener('click', action);
+      pill.append(element);
+      return element;
+    };
+    const send = password => {
+      pill.hidden = true;
+      writeBytes(session, encoder.encode(password + '\r'));
+      if (!mobile.matches) session.term.focus();
+    };
+    const fail = error => renderPasswordPill(session, mode,
+      error?.name === 'NotAllowedError' ? 'Face ID was cancelled.' : error?.message || 'That didn’t work.', true);
+    if (!supported) {
+      note ||= 'This browser can’t save passwords with a passkey.';
+      error = true;
+    } else if (mode === 'unlock') {
+      button('Enter saved password', async () => {
+        try {
+          const password = await loadPassword(session.user);
+          if (password === null) renderPasswordPill(session, 'offer');
+          else send(password);
+        } catch (problem) { fail(problem); }
+      }, true);
+      button('Forget', () => {
+        forgetPassword(session.user);
+        renderPasswordPill(session, 'offer', 'Forgot the saved password for ' + session.user + '.');
+      });
+    } else if (mode === 'offer') {
+      button('Save password with Face ID', () => renderPasswordPill(session, 'save'), true);
+      button('Not now', () => { pill.hidden = true; });
+    } else {
+      const field = document.createElement('input');
+      field.type = 'password';
+      field.autocomplete = 'current-password';
+      field.placeholder = 'SSH password for ' + session.user;
+      field.setAttribute('aria-label', 'SSH password for ' + session.user);
+      pill.append(field);
+      const save = async () => {
+        const password = field.value;
+        if (!password) return;
+        try {
+          await savePassword(session.user, password);
+          send(password);
+        } catch (problem) { fail(problem); }
+      };
+      field.addEventListener('keydown', event => { if (event.key === 'Enter') save(); });
+      button('Save and sign in', save, true);
+      button('Cancel', () => renderPasswordPill(session, 'offer'));
+      requestAnimationFrame(() => field.focus());
+    }
+    if (note) {
+      const text = document.createElement('div');
+      text.className = 'pill-note';
+      text.dataset.error = String(error);
+      text.textContent = note;
+      pill.append(text);
+    }
+    pill.hidden = false;
+  }
+
+  function wirePasswordPill(session) {
+    const pill = document.createElement('div');
+    pill.className = 'password-pill';
+    pill.setAttribute('role', 'group');
+    pill.setAttribute('aria-label', 'Saved SSH password');
+    pill.hidden = true;
+    pill.addEventListener('pointerdown', event => event.stopPropagation());
+    session.content.append(pill);
+    session.passwordPill = pill;
   }
 
   // Phone dictation (iOS at least) rewrites the hidden input field as it
