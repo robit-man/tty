@@ -3748,9 +3748,16 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     }
   }
 
+  // Extend a selection from the word it started on to CELL, in either direction.
+  function extendSelection(session, word, cell) {
+    const [start, end] = word;
+    const before = cell.row < start.row || (cell.row === start.row && cell.col < start.col);
+    selectCells(session, before ? end : start, cell);
+  }
+
   function wireSelection(session) {
     const element = session.term.element;
-    let press = null, lastTouch = 0;
+    let press = null, lastTouch = 0, lastTap = null;
     const cancel = () => {
       if (press) clearTimeout(press.timer);
       press = null;
@@ -3767,13 +3774,13 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
       event.stopPropagation();
       press.x = touch.clientX;
       press.y = touch.clientY;
-      const cell = cellAt(session, press.x, press.y);
-      const [start, end] = press.word;
-      const before = cell.row < start.row || (cell.row === start.row && cell.col < start.col);
-      selectCells(session, before ? end : start, cell);
+      extendSelection(session, press.word, cellAt(session, press.x, press.y));
     };
     const finish = event => {
       lastTouch = performance.now();
+      // A short, still touch is a tap; a second one soon after starts a selection.
+      lastTap = press && !press.active && lastTouch - press.started < 250
+        ? {time: lastTouch, x: press.x, y: press.y} : null;
       if (press?.active) {
         if (event.cancelable) event.preventDefault();
         event.stopPropagation();
@@ -3784,9 +3791,24 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     element.addEventListener('touchstart', event => {
       lastTouch = performance.now();
       cancel();
-      if (event.touches.length !== 1) return;
+      if (event.touches.length !== 1) {
+        lastTap = null;
+        return;
+      }
       const touch = event.touches[0];
-      press = {x: touch.clientX, y: touch.clientY, active: false, word: null};
+      const tap = lastTap;
+      lastTap = null;
+      if (tap && lastTouch - tap.time < 320 && Math.hypot(touch.clientX - tap.x, touch.clientY - tap.y) < 30) {
+        // Double tap: select from here, and keep this touch from the program.
+        event.preventDefault();
+        event.stopPropagation();
+        press = {x: touch.clientX, y: touch.clientY, active: true, started: lastTouch};
+        press.word = wordAt(session, cellAt(session, press.x, press.y));
+        selectCells(session, ...press.word);
+        followTouch(event, {touchmove: move, touchend: finish, touchcancel: finish});
+        return;
+      }
+      press = {x: touch.clientX, y: touch.clientY, active: false, word: null, started: lastTouch};
       press.timer = setTimeout(() => {
         if (!press) return;
         press.active = true;
@@ -3795,7 +3817,35 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
         navigator.vibrate?.(8);
       }, 450);
       followTouch(event, {touchmove: move, touchend: finish, touchcancel: finish});
-    }, {passive: true, capture: true});
+    }, {passive: false, capture: true});
+    // When a program tracks the mouse (Claude Code, Codex), xterm sends clicks to
+    // it instead of selecting. A double-click then drag selects text anyway.
+    element.addEventListener('mousedown', event => {
+      // A right-click on a selection opens the menu; a program tracking the
+      // mouse would otherwise receive it and xterm would drop the selection.
+      if (event.button === 2 && session.term.hasSelection()) {
+        event.stopPropagation();
+        return;
+      }
+      if (event.button !== 0 || event.detail !== 2 || session.term.modes.mouseTrackingMode === 'none') return;
+      event.preventDefault();
+      event.stopPropagation();
+      session.term.focus();
+      const word = wordAt(session, cellAt(session, event.clientX, event.clientY));
+      selectCells(session, ...word);
+      const move = moved => {
+        moved.stopPropagation();
+        extendSelection(session, word, cellAt(session, moved.clientX, moved.clientY));
+      };
+      const up = released => {
+        released.stopPropagation();
+        document.removeEventListener('mousemove', move, true);
+        document.removeEventListener('mouseup', up, true);
+        if (session.term.hasSelection()) showTermMenu(session, released.clientX, released.clientY);
+      };
+      document.addEventListener('mousemove', move, true);
+      document.addEventListener('mouseup', up, true);
+    }, true);
     element.addEventListener('contextmenu', event => {
       event.preventDefault();
       // Android also reports a long press as a context menu; the touch path handles it.
