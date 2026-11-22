@@ -3169,6 +3169,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     term.open(content);
     wireTouchScroll(session);
     wireSelection(session);
+    inputLog?.watch(term.textarea);
     content.append(cursorLayer);
     wireSessionCursor(session);
     if (guest) term.onRender(() => sizeGuestFrame(session));
@@ -3853,6 +3854,66 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
       showTermMenu(session, event.clientX, event.clientY);
     });
   }
+
+  // Diagnostic log of keyboard and dictation events, for adapting input
+  // handling to a phone's dictation. Open the page with #input-log to show
+  // it. Entries contain what you typed or dictated and never leave the page
+  // unless you copy them.
+  const inputLog = (() => {
+    let enabled = false;
+    try {
+      if (location.hash === '#input-log') sessionStorage.setItem('tty-input-log', '1');
+      enabled = sessionStorage.getItem('tty-input-log') === '1';
+    } catch (_) {}
+    if (!enabled) return null;
+    const panel = document.createElement('section');
+    panel.setAttribute('aria-label', 'Input event log');
+    panel.style.cssText = 'position:fixed;inset:auto 0 0 0;z-index:9;max-block-size:34vh;display:grid;'
+      + 'grid-template-rows:auto 1fr;background:#000;border-top:1px solid rgb(255 255 255 / .32);'
+      + 'font:11px/1.35 ui-monospace,monospace;color:#d2d2d2';
+    const bar = document.createElement('div');
+    bar.style.cssText = 'display:flex;gap:6px;align-items:center;padding:4px 8px';
+    const title = document.createElement('strong');
+    title.textContent = 'Input log';
+    title.style.flex = '1';
+    const list = document.createElement('pre');
+    list.style.cssText = 'margin:0;padding:4px 8px 8px;overflow:auto;white-space:pre-wrap';
+    const lines = [];
+    let last = performance.now();
+    const button = (label, action) => {
+      const element = document.createElement('button');
+      element.type = 'button';
+      element.textContent = label;
+      element.style.cssText = 'min-block-size:30px;padding:0 10px;border:1px solid rgb(255 255 255 / .32);'
+        + 'border-radius:7px;background:transparent;color:inherit;font:inherit';
+      element.addEventListener('click', action);
+      return element;
+    };
+    bar.append(title, button('Copy', () => copyText(navigator.userAgent + '\n' + lines.join('\n'))),
+      button('Clear', () => { lines.length = 0; list.textContent = ''; }),
+      button('Close', () => { try { sessionStorage.removeItem('tty-input-log'); } catch (_) {} panel.remove(); }));
+    panel.append(bar, list);
+    document.body.append(panel);
+    const record = event => {
+      const now = performance.now();
+      const target = event.target;
+      const parts = ['+' + Math.round(now - last) + 'ms', event.type];
+      last = now;
+      if (event.inputType) parts.push(event.inputType);
+      if (event.key !== undefined) parts.push('key=' + JSON.stringify(event.key), 'code=' + (event.keyCode ?? ''));
+      if (event.data !== undefined && event.data !== null) parts.push('data=' + JSON.stringify(event.data));
+      if (event.isComposing) parts.push('composing');
+      if (event.dataTransfer) parts.push('transfer=' + JSON.stringify(event.dataTransfer.getData('text/plain')));
+      if (event.getTargetRanges?.().length) parts.push('ranges=' + event.getTargetRanges().length);
+      parts.push('value=' + JSON.stringify(target.value), 'sel=' + target.selectionStart + '-' + target.selectionEnd);
+      lines.push(parts.join(' '));
+      if (lines.length > 300) lines.shift();
+      list.textContent = lines.slice(-60).join('\n');
+      list.scrollTop = list.scrollHeight;
+    };
+    const types = ['keydown', 'keyup', 'beforeinput', 'input', 'compositionstart', 'compositionupdate', 'compositionend'];
+    return {watch: textarea => { for (const type of types) textarea.addEventListener(type, record, true); }};
+  })();
 
   // Two-finger drags become wheel events, so xterm treats them exactly like a
   // desktop wheel or trackpad: mouse-wheel reports when the program tracks the
