@@ -182,21 +182,34 @@ button:not(:disabled):active { transform: scale(.96); }
 .tab-row {
   display: flex;
   inline-size: 100%;
-  min-block-size: 34px;
-  margin-block-end: 5px;
+  margin-block-end: 4px;
   overflow: hidden;
-  border-radius: var(--radius);
-  border: 1px solid var(--edge);
-  background: var(--surface);
-  transition: background-color var(--fade), border-color var(--fade);
+  border-radius: 8px;
+  border: 1px solid rgb(255 255 255 / .09);
+  background: rgb(255 255 255 / .022);
+  transition: background-color var(--fade), border-color var(--fade), opacity var(--fade);
 }
 .tab-row[data-selected="true"] {
-  border-color: var(--edge-strong);
-  background: var(--hover);
+  border-color: rgb(255 255 255 / .2);
+  background: rgb(255 255 255 / .07);
 }
+#app[data-dragging="true"] .tab-row[data-dragged="true"] { opacity: .45; }
+#sidebar-trash {
+  display: grid;
+  place-items: center;
+  block-size: 34px;
+  margin-block-start: 6px;
+  border: 1px dashed var(--edge-strong);
+  border-radius: 8px;
+  color: var(--muted);
+  transition: color var(--fade), border-color var(--fade), background-color var(--fade);
+}
+#sidebar-trash[hidden] { display: none; }
+#sidebar-trash[data-over="true"] { border-color: var(--error); color: var(--error); background: rgb(255 171 171 / .08); }
 .sidebar-add {
   display: grid;
   place-items: center;
+  min-block-size: 28px;
   padding: 0;
   color: #d2d2d2;
 }
@@ -209,14 +222,16 @@ button:not(:disabled):active { transform: scale(.96); }
 }
 .tab-select {
   flex: 1;
-  padding: 0 6px;
+  padding: 6px 8px;
+  line-height: 1.25;
   text-align: start;
   text-overflow: ellipsis;
   white-space: nowrap;
   overflow: hidden;
   font-size: .75rem;
   color: #d2d2d2;
-  touch-action: pan-y;
+  /* Rows drag in any direction: onto a pane to dock, or onto the trash. */
+  touch-action: none;
   user-select: none;
   -webkit-touch-callout: none;
 }
@@ -538,8 +553,7 @@ dialog::backdrop { background: transparent; }
 @media (max-width: 560px) {
   #session-sidebar { --rail-width: 79px; }
   .sidebar-content { padding-inline: 4px 3px; }
-  .tab-row { min-block-size: 42px; }
-  .tab-select { padding-inline: 4px; font-size: .6875rem; }
+  .tab-select { padding: 7px 6px; font-size: .6875rem; }
   .tab-close { inline-size: 25px; }
   .terminal-with-padding { padding-inline-start: 5px; }
   #controls { padding-inline-end: 4px; }
@@ -690,7 +704,44 @@ dialog::backdrop { background: transparent; }
   gap: var(--gap);
 }
 .share-peer button { inline-size: auto; block-size: 32px; font-size: .8125rem; }
-.terminal-content { position: relative; }
+.terminal-content { position: relative; -webkit-touch-callout: none; }
+#term-menu {
+  position: fixed;
+  z-index: 8;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  max-inline-size: min(calc(100vw - 16px), 320px);
+  padding: 4px;
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--radius);
+  background: var(--black);
+  box-shadow: 0 8px 28px rgb(0 0 0 / .65);
+}
+#term-menu[hidden] { display: none; }
+#term-menu button {
+  min-block-size: 38px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+}
+#term-menu button:hover, #term-menu button:focus-visible { background: var(--hover); }
+#term-menu button:disabled { color: var(--muted); background: transparent; }
+#term-menu input {
+  flex: 1 0 100%;
+  min-block-size: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--edge);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+}
 .peer-cursors { position: absolute; inset: 0 auto auto 0; z-index: 2; overflow: hidden; pointer-events: none; }
 .peer-cursor {
   position: absolute;
@@ -725,7 +776,9 @@ dialog::backdrop { background: transparent; }
 <svg class="icon-definitions" width="0" height="0" aria-hidden="true" focusable="false">
   <symbol id="icon-plus" viewBox="0 0 16 16"><path d="M8 3.5v9M3.5 8h9" /></symbol>
   <symbol id="icon-minus" viewBox="0 0 16 16"><path d="M3.5 8h9" /></symbol>
-  <symbol id="icon-qr" viewBox="0 0 16 16"><path stroke-linejoin="round" d="M2 2h4v4H2zM10 2h4v4h-4zM2 10h4v4H2zM10 9v2h2v3M14 9v2M9 14h.01M14 14h.01" /></symbol>
+  <symbol id="icon-share" viewBox="0 0 16 16"><circle cx="12" cy="3.5" r="1.75" /><circle cx="4" cy="8" r="1.75" /><circle cx="12" cy="12.5" r="1.75" /><path d="m5.55 7.2 4.9-2.9M5.55 8.8l4.9 2.9" /></symbol>
+  <symbol id="icon-trash" viewBox="0 0 16 16"><path stroke-linejoin="round" d="M2.5 4.5h11M6 4.5V3h4v1.5M4 4.5l.7 8.5h6.6l.7-8.5M6.75 7v4M9.25 7v4" /></symbol>
+  <symbol id="icon-fork" viewBox="0 0 16 16"><circle cx="5" cy="3" r="1.6" /><circle cx="5" cy="13" r="1.6" /><circle cx="11" cy="4.5" r="1.6" /><path d="M5 4.6v6.8M11 6.1c0 3.4-6 2.4-6 5.3" /></symbol>
   <symbol id="icon-close" viewBox="0 0 16 16"><path d="m4 4 8 8m0-8-8 8" /></symbol>
   <symbol id="icon-pointer" viewBox="0 0 16 18"><path d="M2 1v14l3-3 3 5 3-2-3-5h5z" /></symbol>
 </svg>
@@ -755,6 +808,9 @@ dialog::backdrop { background: transparent; }
             aria-haspopup="dialog" aria-controls="connect-dialog" title="New session">
           <svg class="control-icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#icon-plus" /></svg>
         </button>
+        <div id="sidebar-trash" aria-hidden="true" title="Drop here to close the session" hidden>
+          <svg class="control-icon" viewBox="0 0 16 16"><use href="#icon-trash" /></svg>
+        </div>
       </div>
     </aside>
     <div id="terminals">
@@ -763,6 +819,12 @@ dialog::backdrop { background: transparent; }
     </div>
   </main>
   <div id="soft-keys" role="group" aria-label="Terminal keyboard controls" hidden></div>
+  <div id="term-menu" role="menu" aria-label="Terminal text" hidden>
+    <button type="button" role="menuitem" id="term-copy">Copy</button>
+    <button type="button" role="menuitem" id="term-paste">Paste</button>
+    <button type="button" role="menuitem" id="term-select-all">Select all</button>
+    <input id="term-paste-field" type="text" placeholder="Paste here" aria-label="Paste text into the terminal" hidden>
+  </div>
   <section id="connection-menu" aria-labelledby="connection-menu-title" hidden>
     <header>
       <h2 id="connection-menu-title">Connections</h2>
@@ -1666,7 +1728,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     qr.type = 'button';
     qr.setAttribute('aria-label', 'Terminal sharing for session ' + session.id);
     qr.title = 'Terminal sharing';
-    qr.append(controlIcon('qr'));
+    qr.append(controlIcon('share'));
     qr.addEventListener('click', () => openSharing(session, qr));
     detail.className = 'stats-session-detail';
     heading.append(label, state, qr);
@@ -2591,6 +2653,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     statusButton.title = label + ' · Connection statistics';
     for (const session of sessions) {
       session.shareButton.hidden = session.state !== 'online';
+      session.forkButton.hidden = session.guest || !session.host || session.state === 'connecting';
       session.shareButton.dataset.shared = String(Boolean(session.share || session.shares.size));
     }
     if (!connectionMenu.hidden) renderStats();
@@ -2884,32 +2947,37 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     }
   }
 
-  function beginDrag(event, session, revealClose = false) {
+  const sidebarTrash = $('sidebar-trash');
+
+  function overTrash(event) {
+    if (sidebarTrash.hidden) return false;
+    const box = sidebarTrash.getBoundingClientRect();
+    return event.clientX >= box.left - 6 && event.clientX <= box.right + 6
+      && event.clientY >= box.top - 8 && event.clientY <= box.bottom + 8;
+  }
+
+  function beginDrag(event, session, fromSidebar = false) {
     if (event.button !== 0 || !event.isPrimary) return;
     drag = {session, pointer: event.pointerId, x: event.clientX, y: event.clientY,
-      handle: session ? event.target : addButton, moved: false, position: null};
-    if (revealClose && event.pointerType === 'touch') {
-      const gesture = drag;
-      drag.holdTimer = setTimeout(() => {
-        if (drag !== gesture) return;
-        gesture.held = true;
-        showTouchClose(session.row);
-      }, 450);
-    }
+      handle: session ? event.target : addButton, moved: false, position: null, fromSidebar};
   }
 
   function moveDrag(event) {
     if (!drag || drag.pointer !== event.pointerId) return;
     if (!drag.moved && Math.hypot(drag.x - event.clientX, drag.y - event.clientY) < 6) return;
     if (!drag.moved) {
-      clearTimeout(drag.holdTimer);
-      showTouchClose();
       closeFontMenu();
+      if (drag.fromSidebar) {
+        sidebarTrash.hidden = false;
+        drag.session.row.dataset.dragged = 'true';
+      }
     }
     drag.moved = true;
     app.dataset.dragging = 'true';
     if (event.cancelable) event.preventDefault();
-    const position = dockPosition(drag.session, event.clientX, event.clientY);
+    const trash = drag.fromSidebar && overTrash(event);
+    sidebarTrash.dataset.over = String(trash);
+    const position = trash ? null : dockPosition(drag.session, event.clientX, event.clientY);
     if (position?.target !== drag.position?.target || position?.axis !== drag.position?.axis
         || position?.first !== drag.position?.first) {
       drag.position = position;
@@ -2919,15 +2987,21 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
 
   function finishDrag(event) {
     if (!drag || drag.pointer !== event.pointerId) return;
-    const {session, moved, handle, held, holdTimer} = drag;
-    clearTimeout(holdTimer);
+    const {session, moved, handle, fromSidebar} = drag;
+    const trash = fromSidebar && moved && event.type === 'pointerup' && overTrash(event);
     drag = null;
     delete app.dataset.dragging;
+    if (session) delete session.row.dataset.dragged;
+    sidebarTrash.hidden = true;
+    sidebarTrash.dataset.over = 'false';
     dockTargets.hidden = true;
-    if (!moved && !held) return;
+    if (!moved) return;
     suppressClick = handle;
     setTimeout(() => { if (suppressClick === handle) suppressClick = null; }, 80);
-    if (!moved) return;
+    if (trash) {
+      session.requestClose();
+      return;
+    }
     const position = event.type === 'pointerup' && dockPosition(session, event.clientX, event.clientY);
     if (!position) return;
     if (session) dockSession(session, position.target, position.axis, position.first);
@@ -2979,8 +3053,9 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
 
   function changeSessionLabel(session, user, host) {
     session.user = user;
-    session.tab.textContent = session.id + ' ' + user;
-    session.paneLabel.textContent = session.tab.textContent;
+    session.host = host;
+    session.tab.textContent = session.qtty || user;
+    session.paneLabel.textContent = session.id + ' ' + user + (session.qtty ? ' · ' + session.qtty : '');
     session.paneLabel.setAttribute('aria-label', 'Text size for session ' + session.id + ', ' + user);
     session.tab.title = session.guest ? user + ' · Shared terminal' : user + '@' + host;
     session.tab.setAttribute('aria-label', 'Session ' + session.id + ', ' + user +
@@ -2998,6 +3073,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     const paneLabel = document.createElement('button');
     const paneActions = document.createElement('div');
     const shareButton = document.createElement('button');
+    const forkButton = document.createElement('button');
     const minimize = document.createElement('button');
     const paneClose = document.createElement('button');
     const frame = document.createElement('div');
@@ -3038,9 +3114,15 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     shareButton.title = 'Terminal sharing';
     shareButton.setAttribute('aria-label', 'Terminal sharing for pane ' + id);
     shareButton.setAttribute('aria-haspopup', 'dialog');
-    shareButton.append(controlIcon('qr'));
+    shareButton.append(controlIcon('share'));
     shareButton.hidden = true;
-    paneActions.append(shareButton, minimize, paneClose);
+    forkButton.className = 'pane-share pane-fork';
+    forkButton.type = 'button';
+    forkButton.title = 'Fork terminal in the same directory';
+    forkButton.setAttribute('aria-label', 'Fork terminal pane ' + id);
+    forkButton.append(controlIcon('fork'));
+    forkButton.hidden = true;
+    paneActions.append(shareButton, forkButton, minimize, paneClose);
     paneBar.append(paneLabel, paneActions);
     frame.className = 'terminal-with-padding';
     content.className = 'terminal-content';
@@ -3048,7 +3130,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     cursorLayer.setAttribute('aria-hidden', 'true');
     frame.append(content);
     panel.append(paneBar, frame);
-    row.append(tab, close);
+    row.append(tab);
     tabs.append(row);
 
     const term = new Terminal({
@@ -3059,6 +3141,8 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
       fontSize: 13,
       lineHeight: 1.2,
       minimumContrastRatio: 4.5,
+      // Option-drag on macOS, like Shift-drag elsewhere, selects text even when a program tracks the mouse.
+      macOptionClickForcesSelection: true,
       theme: {
         background: '#000000', foreground: '#efefef', cursor: '#f0f0f0', cursorAccent: '#000000',
         selectionBackground: '#555555', selectionInactiveBackground: '#343434',
@@ -3068,7 +3152,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     const fit = new FitAddon();
     const serializer = guest ? null : new window.TTYShareVendor.SerializeAddon();
     const session = {
-      id, row, tab, close, panel, paneLabel, term, fit, user, content, shareButton, serializer, guest,
+      id, row, tab, close, panel, paneLabel, term, fit, user, content, shareButton, forkButton, serializer, guest,
       state: 'offline', socket: null, timer: 0, lastSize: '', share: null, shares: new Set(), nextPeer: 1,
       cursorLayer, cursors: new Map(), cursorTimer: 0, localCursor: null, guestWrite: 0, stats: {rx: 0, tx: 0}
     };
@@ -3084,6 +3168,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     if (serializer) term.loadAddon(serializer);
     term.open(content);
     wireTouchScroll(session);
+    wireSelection(session);
     content.append(cursorLayer);
     wireSessionCursor(session);
     if (guest) term.onRender(() => sizeGuestFrame(session));
@@ -3107,6 +3192,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     });
     minimize.addEventListener('click', () => minimizePane(session));
     shareButton.addEventListener('click', () => openSharing(session, shareButton));
+    forkButton.addEventListener('click', () => forkTerminal(session));
     frame.addEventListener('pointerdown', () => setActive(session));
     frame.addEventListener('focusin', () => { if (active !== session) setActive(session); });
     function requestClose() {
@@ -3117,9 +3203,26 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
       showDialog(closeDialog);
     }
     close.addEventListener('click', requestClose);
+    session.requestClose = requestClose;
+    tab.addEventListener('keydown', event => {
+      if (event.key === 'Delete' || event.key === 'Backspace') requestClose();
+    });
     paneClose.addEventListener('click', requestClose);
     term.onData(data => {
+      if (session.state === 'offline' && !session.guest) {
+        if (data === '\r' && !connectDialog.open) openConnect(session);
+        return;
+      }
       if (!session.guestWrite) writeBytes(session, encoder.encode(session === active ? applyTypedModifiers(data) : data));
+    });
+    // qtty announces the session a pane shows, so the pane can return to it later.
+    if (!guest) term.parser.registerOscHandler(5379, data => {
+      const [kind, name = ''] = data.split(';');
+      if (kind !== 'qtty' || (name && !qttyName.test(name))) return true;
+      session.qtty = name || null;
+      changeSessionLabel(session, session.user, session.host);
+      saveWorkspace();
+      return true;
     });
     term.onBinary(data => {
       if (!session.guestWrite) writeBytes(session, Uint8Array.from(data, character => character.charCodeAt(0)));
@@ -3155,6 +3258,132 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   // dead link and a new socket resumes the same PTY. Output is counted by byte
   // offset for replay; unacknowledged input is resent after the gateway reports
   // how many bytes it received.
+  const qttyName = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,31}$/;
+  const workspaceKey = 'tty-workspace';
+
+  // Panes showing qtty sessions are kept so a later visit can reopen them.
+  function saveWorkspace() {
+    const panes = sessions.filter(session => !session.guest && session.qtty && session.host)
+      .map(({user, host, qtty}) => ({user, host, qtty}));
+    try {
+      if (panes.length) localStorage.setItem(workspaceKey, JSON.stringify(panes));
+      else localStorage.removeItem(workspaceKey);
+    } catch (_) {}
+  }
+
+  function reconnectHint(session) {
+    session.term.writeln(session.qtty
+      ? '\x1b[2mPress Enter to sign in again and return to qtty session ' + session.qtty + '.\x1b[0m'
+      : '\x1b[2mPress Enter to reconnect.\x1b[0m');
+  }
+
+  function restoreWorkspace() {
+    let panes = [];
+    try { panes = JSON.parse(localStorage.getItem(workspaceKey) || '[]'); } catch (_) {}
+    if (!Array.isArray(panes)) return [];
+    const restored = panes.filter(pane => pane && sshUser.test(pane.user) && qttyName.test(pane.qtty)
+      && typeof pane.host === 'string' && tunnelHost.test(pane.host)).slice(0, 12).map(pane => {
+      const session = addSession(pane.user, pane.host, null);
+      nextSession++;
+      session.qtty = pane.qtty;
+      changeSessionLabel(session, pane.user, pane.host);
+      session.term.writeln('qtty session ' + pane.qtty + ' is waiting on ' + pane.host + '.');
+      reconnectHint(session);
+      return session;
+    });
+    if (restored.length) toggleSidebar(true);
+    return restored;
+  }
+
+  // Fork opens a new pane beside SESSION with a new qtty session in the same
+  // directory. It borrows the parent's SSH login when the gateway still has
+  // it; otherwise the new pane shows the usual password prompt.
+  function forkTerminal(parent) {
+    if (parent.guest || !parent.host) return;
+    const placement = {target: parent, axis: mobile.matches ? 'column' : 'row', first: false};
+    const from = parent.qtty || undefined;
+    if (parent.state !== 'online' || !parent.resume) {
+      openConnect(null, true, visiblePanes.has(parent) ? placement : null, from || null);
+      if (parent.host) prefillLink(parent);
+      return;
+    }
+    const {host, id, secret} = parent.resume;
+    const session = addSession(parent.user, host, visiblePanes.has(parent) ? placement : null);
+    nextSession++;
+    session.forkFrom = from;
+    session.state = 'connecting';
+    session.ended = false;
+    session.stats = {rx: 0, tx: 0};
+    updateStatus();
+    const started = performance.now();
+    let socket;
+    const fail = message => {
+      if (session.socket !== socket) return;
+      endSocket(session);
+      session.term.writeln(message);
+      reconnectHint(session);
+      updateStatus();
+    };
+    try {
+      socket = new WebSocket('wss://' + host + '/ws');
+    } catch (_) {
+      session.socket = null;
+      session.state = 'offline';
+      session.term.writeln('Couldn’t open a WebSocket for the new terminal.');
+      reconnectHint(session);
+      updateStatus();
+      return;
+    }
+    session.socket = socket;
+    socket.binaryType = 'arraybuffer';
+    session.timer = setTimeout(() => fail('The new terminal didn’t open in time.'), 20000);
+    socket.onopen = () => {
+      if (session.socket !== socket) return;
+      fitTerminal(session);
+      const {cols, rows} = session.term;
+      socket.send(JSON.stringify({type: 'fork', v: 1, session: id, resume: secret, cols, rows,
+        ...(from ? {fork: from} : {})}));
+    };
+    socket.onmessage = ({data}) => {
+      if (session.socket !== socket) return;
+      sawTraffic(session);
+      if (data instanceof ArrayBuffer) {
+        if (session.state === 'online') receiveOutput(session, data);
+        return;
+      }
+      let message;
+      try { message = JSON.parse(data); } catch (_) { return; }
+      if (message?.type === 'ready' && session.state === 'connecting') {
+        clearTimeout(session.timer);
+        session.state = 'online';
+        startResume(session, host, message);
+        session.stats.started = performance.now();
+        session.stats.handshake = session.stats.started - started;
+        session.term.reset();
+        updateStatus();
+        fitTerminal(session);
+        live('Session ' + session.id + ' forked from session ' + parent.id + '.');
+      } else if (message?.type === 'error' && session.state === 'connecting') {
+        fail(typeof message.message === 'string' ? message.message.slice(0, 200) : 'The gateway refused the fork.');
+      } else {
+        handleControl(session, socket, message);
+      }
+    };
+    socket.onclose = event => {
+      if (session.socket !== socket) return;
+      if (session.state === 'connecting') fail('The new terminal closed before it opened.');
+      else closedOnline(session, event);
+    };
+  }
+
+  function prefillLink(session) {
+    const saved = readRecents().find(entry => entry.user === session.user && parseLink(entry.link)?.host === session.host);
+    if (saved && !endpoint.value) {
+      endpoint.value = saved.link;
+      renderForm();
+    }
+  }
+
   const resumeTiming = {ping: 5000, answer: 8000, probe: 3000, attempt: 8000, window: 15 * 60 * 1000};
   const resumeInputLimit = 1 << 20;
 
@@ -3273,6 +3502,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   function finishResume(session, message) {
     endSocket(session);
     session.term.writeln('\r\n' + message);
+    if (!session.guest) reconnectHint(session);
     updateStatus();
     if (session === active) {
       clearModifiers();
@@ -3387,6 +3617,193 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     } catch (_) {}
   }
 
+  // Text selection and clipboard. Desktop selection is xterm's own (Shift-drag
+  // or Option-drag overrides a program's mouse tracking); right-click opens
+  // the menu. On touch screens, a long press selects the word under the finger,
+  // dragging extends the selection, and lifting the finger opens the menu.
+  const termMenu = $('term-menu');
+  const pasteField = $('term-paste-field');
+  let menuSession = null;
+
+  function canType(session) {
+    return session.state === 'online' && (!session.guest || session.share?.permissions.write);
+  }
+
+  function showTermMenu(session, x, y) {
+    menuSession = session;
+    pasteField.hidden = true;
+    pasteField.value = '';
+    $('term-copy').disabled = !session.term.hasSelection();
+    $('term-paste').disabled = !canType(session);
+    termMenu.hidden = false;
+    const {width, height} = termMenu.getBoundingClientRect();
+    const left = Math.max(8, Math.min(x - width / 2, innerWidth - width - 8));
+    const top = y - height - 14 > 8 ? y - height - 14 : Math.min(y + 18, innerHeight - height - 8);
+    termMenu.style.left = left + 'px';
+    termMenu.style.top = top + 'px';
+  }
+
+  function hideTermMenu() {
+    termMenu.hidden = true;
+    pasteField.hidden = true;
+    menuSession = null;
+  }
+
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (_) {
+      const scratch = document.createElement('textarea');
+      scratch.value = text;
+      scratch.setAttribute('readonly', '');
+      scratch.style.cssText = 'position:fixed;opacity:0;inset:0 auto auto 0';
+      document.body.append(scratch);
+      scratch.select();
+      document.execCommand('copy');
+      scratch.remove();
+    }
+  }
+
+  $('term-copy').addEventListener('click', async () => {
+    const session = menuSession;
+    if (!session?.term.hasSelection()) return;
+    await copyText(session.term.getSelection());
+    session.term.clearSelection();
+    hideTermMenu();
+    live('Copied to the clipboard.');
+  });
+  $('term-paste').addEventListener('click', async () => {
+    const session = menuSession;
+    if (!session || !canType(session)) return;
+    try {
+      const text = await navigator.clipboard.readText();
+      hideTermMenu();
+      if (text) session.term.paste(text);
+      session.term.focus();
+    } catch (_) {
+      // Some browsers only allow pasting through their own paste gesture.
+      pasteField.hidden = false;
+      pasteField.focus();
+    }
+  });
+  pasteField.addEventListener('input', () => {
+    const session = menuSession;
+    const text = pasteField.value;
+    if (!session || !text) return;
+    hideTermMenu();
+    if (canType(session)) session.term.paste(text);
+  });
+  $('term-select-all').addEventListener('click', () => {
+    if (!menuSession) return;
+    menuSession.term.selectAll();
+    $('term-copy').disabled = false;
+  });
+  document.addEventListener('pointerdown', event => {
+    if (!termMenu.hidden && !termMenu.contains(event.target)) hideTermMenu();
+  }, true);
+  document.addEventListener('keydown', event => { if (event.key === 'Escape' && !termMenu.hidden) hideTermMenu(); });
+
+  function cellAt(session, x, y) {
+    const term = session.term;
+    const rect = (term.element.querySelector('.xterm-screen') || term.element).getBoundingClientRect();
+    const col = Math.max(0, Math.min(term.cols - 1, Math.floor((x - rect.left) / (rect.width / term.cols))));
+    const row = Math.max(0, Math.min(term.rows - 1, Math.floor((y - rect.top) / (rect.height / term.rows))));
+    return {col, row: row + term.buffer.active.viewportY};
+  }
+
+  function wordAt(session, cell) {
+    const line = session.term.buffer.active.getLine(cell.row);
+    const text = line ? line.translateToString(false) : '';
+    const word = character => Boolean(character) && !/[\s"'`()<>\[\]{}|,;]/.test(character);
+    if (!word(text[cell.col])) return [cell, cell];
+    let start = cell.col, end = cell.col;
+    while (start > 0 && word(text[start - 1])) start--;
+    while (end < text.length - 1 && word(text[end + 1])) end++;
+    return [{col: start, row: cell.row}, {col: end, row: cell.row}];
+  }
+
+  function selectCells(session, from, to) {
+    const cols = session.term.cols;
+    const [start, end] = from.row * cols + from.col <= to.row * cols + to.col ? [from, to] : [to, from];
+    session.term.select(start.col, start.row, (end.row - start.row) * cols + end.col - start.col + 1);
+  }
+
+  // Touch events keep going to the node the touch started on, and xterm
+  // replaces row nodes as it redraws. Listening on that node itself still
+  // works after it leaves the document; its ancestors stop hearing anything.
+  function followTouch(event, handlers) {
+    const targets = new Set([...event.touches].map(touch => touch.target).filter(Boolean));
+    const stop = () => {
+      for (const target of targets) {
+        for (const [type, handler] of Object.entries(handlers)) target.removeEventListener(type, handler);
+        target.removeEventListener('touchend', ended);
+        target.removeEventListener('touchcancel', ended);
+      }
+    };
+    const ended = event => { if (!event.touches.length) stop(); };
+    for (const target of targets) {
+      for (const [type, handler] of Object.entries(handlers)) target.addEventListener(type, handler, {passive: false});
+      target.addEventListener('touchend', ended);
+      target.addEventListener('touchcancel', ended);
+    }
+  }
+
+  function wireSelection(session) {
+    const element = session.term.element;
+    let press = null, lastTouch = 0;
+    const cancel = () => {
+      if (press) clearTimeout(press.timer);
+      press = null;
+    };
+    const move = event => {
+      if (!press || event.touches.length !== 1) return;
+      const touch = event.touches[0];
+      if (!press.active) {
+        if (Math.hypot(touch.clientX - press.x, touch.clientY - press.y) > 10) cancel();
+        return;
+      }
+      // Selecting: keep the viewport and the program's mouse handling still.
+      event.preventDefault();
+      event.stopPropagation();
+      press.x = touch.clientX;
+      press.y = touch.clientY;
+      const cell = cellAt(session, press.x, press.y);
+      const [start, end] = press.word;
+      const before = cell.row < start.row || (cell.row === start.row && cell.col < start.col);
+      selectCells(session, before ? end : start, cell);
+    };
+    const finish = event => {
+      lastTouch = performance.now();
+      if (press?.active) {
+        if (event.cancelable) event.preventDefault();
+        event.stopPropagation();
+        showTermMenu(session, press.x, press.y);
+      }
+      cancel();
+    };
+    element.addEventListener('touchstart', event => {
+      lastTouch = performance.now();
+      cancel();
+      if (event.touches.length !== 1) return;
+      const touch = event.touches[0];
+      press = {x: touch.clientX, y: touch.clientY, active: false, word: null};
+      press.timer = setTimeout(() => {
+        if (!press) return;
+        press.active = true;
+        press.word = wordAt(session, cellAt(session, press.x, press.y));
+        selectCells(session, ...press.word);
+        navigator.vibrate?.(8);
+      }, 450);
+      followTouch(event, {touchmove: move, touchend: finish, touchcancel: finish});
+    }, {passive: true, capture: true});
+    element.addEventListener('contextmenu', event => {
+      event.preventDefault();
+      // Android also reports a long press as a context menu; the touch path handles it.
+      if (performance.now() - lastTouch < 1000) return;
+      showTermMenu(session, event.clientX, event.clientY);
+    });
+  }
+
   // Two-finger drags become wheel events, so xterm treats them exactly like a
   // desktop wheel or trackpad: mouse-wheel reports when the program tracks the
   // mouse (Claude Code, Codex, vim, less), arrow keys in an alternate screen
@@ -3399,10 +3816,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
       x: (touches[0].clientX + touches[1].clientX) / 2,
       y: (touches[0].clientY + touches[1].clientY) / 2
     });
-    element.addEventListener('touchstart', event => {
-      last = event.touches.length === 2 ? midpoint(event.touches) : null;
-    }, {passive: true, capture: true});
-    element.addEventListener('touchmove', event => {
+    const move = event => {
       if (event.touches.length !== 2 || !last) return;
       // Keep xterm's one-finger viewport scroll and the page from also moving.
       event.preventDefault();
@@ -3415,12 +3829,13 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
         deltaX, deltaY, deltaMode: WheelEvent.DOM_DELTA_PIXEL, clientX: point.x, clientY: point.y,
         bubbles: true, cancelable: true
       }));
-    }, {passive: false, capture: true});
-    for (const type of ['touchend', 'touchcancel']) {
-      element.addEventListener(type, event => {
-        if (event.touches.length !== 2) last = null;
-      }, {passive: true, capture: true});
-    }
+    };
+    const end = event => { if (event.touches.length !== 2) last = null; };
+    element.addEventListener('touchstart', event => {
+      if (event.touches.length !== 2) return;
+      last = midpoint(event.touches);
+      followTouch(event, {touchmove: move, touchend: end, touchcancel: end});
+    }, {passive: true, capture: true});
   }
 
   addEventListener('online', probeLinks);
@@ -3452,6 +3867,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     if (index < 0) return;
     endSocket(session);
     sessions.splice(index, 1);
+    saveWorkspace();
     if (touchCloseRow === session.row) showTouchClose();
     paneLayout = previousLayout ?? replacePane(paneLayout, session, null);
     session.term.dispose();
@@ -3521,14 +3937,16 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     updateViewport();
   }
 
-  function openConnect(reuse = null, focus = true, placement = null) {
+  function openConnect(reuse = null, focus = true, placement = null, fork = null) {
     if (connectDialog.open || closeDialog.open || shareDialog.open) return;
     showStats(false);
-    intake = {reuse, placement, previous: active, previousLayout: paneLayout, pending: null};
+    intake = {reuse, placement, previous: active, previousLayout: paneLayout, pending: null, fork};
     connectAnchor = null;
     toggleRecents(false);
     endpoint.value = '';
     username.value = reuse?.user || active?.user || lastUser;
+    // Offer the saved link for this pane's tunnel; a cycled tunnel needs a new one.
+    if (reuse?.host) prefillLink(reuse);
     reportConnectError('');
     renderForm();
     showDialog(connectDialog);
@@ -3595,7 +4013,9 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
       if (session.socket !== socket) return;
       fitTerminal();
       const {cols, rows} = session.term;
-      socket.send(JSON.stringify({type: 'hello', v: 1, token: destination.token, user, cols, rows, resume: true}));
+      const fork = view.fork || view.reuse?.forkFrom;
+      const attach = view.reuse?.qtty ? {attach: view.reuse.qtty} : fork ? {fork} : {};
+      socket.send(JSON.stringify({type: 'hello', v: 1, token: destination.token, user, cols, rows, resume: true, ...attach}));
       destination.token = '';
     };
     socket.onmessage = ({data}) => {
@@ -3921,7 +4341,8 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
 
   updateViewport();
   addEventListener('hashchange', consumeInviteLink);
-  if (!consumeInviteLink()) openConnect(null, false);
+  const restoredPanes = restoreWorkspace();
+  if (!consumeInviteLink()) openConnect(restoredPanes[0] || null, false);
 })();
 </script>
 </body></html>

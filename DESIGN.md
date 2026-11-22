@@ -2,7 +2,7 @@
 
 ## Direction
 
-The terminal fills a black viewport. The connection form opens in a modal. The upper-right plus and connection dot remain visible during use. Every session row and the centered plus entry share the same width. Session rows reveal their close action on hover, keyboard focus, or a touch-and-hold gesture. The caret stays on the left while the rail slides in or out. The terminal fills the available width with the rail collapsed. The keyboard controls appear next to the on-screen keyboard when the terminal has focus.
+The terminal fills a black viewport. The connection form opens in a modal. The upper-right plus and connection dot remain visible during use. Every session row and the centered plus entry share the same width. Session rows show only the session's name: its qtty session, or the SSH user for a plain shell. Dragging a row reveals a dashed trash target at the bottom of the rail, and dropping the row there asks before closing the session. Delete or Backspace on a focused row does the same. The caret stays on the left while the rail slides in or out. The terminal fills the available width with the rail collapsed. The keyboard controls appear next to the on-screen keyboard when the terminal has focus.
 
 ## Tokens
 
@@ -18,6 +18,7 @@ The inline CSS in [index.html](index.html) owns the runtime tokens.
 | Connection status | Gray when disconnected, amber while connecting, green when connected |
 | Input and dialog button height | 46 px |
 | Inner radius, modal padding, outer radius | 10 px, 12 px, 22 px |
+| Session rows | 8 px radius, 6 px × 8 px padding, white at 2.2% (7% selected) over a 9% (20% selected) border |
 | Gap between form controls | 8 px |
 | Modal fade and sidebar slide | 100 ms with reduced-motion support |
 
@@ -29,7 +30,11 @@ Keep each tab’s connection and scrollback independent. A connection error stay
 
 Drag a tab or pane header to dock its terminal. Drag the upper-right plus to preview a new pane and choose its destination before opening the connection form. The preview dims the workspace and highlights the destination. A single pane can split in either direction. Nested panes split perpendicular to their parent. Every pane has a black header. Its label opens text-size controls for that session, and minimizing the pane keeps its session available from the sidebar. Dividers fade into view on hover and can be dragged to resize panes. A two-finger drag in a terminal becomes wheel input, so programs that track the mouse, such as Claude Code, Codex, vim and less, scroll their own views on touch screens as they do with a desktop wheel.
 
-The connection dot opens a live 30-second traffic graph, per-session byte totals, connection age, and measured setup time. Keep the SSH connect and QR connect actions in that menu. The QR action in a pane header opens sharing for that terminal. It also lets either peer end an active share.
+The pane header actions are Share, Fork, Minimize and Close. Fork opens a new qtty session beside the pane in the same working directory, using the pane's SSH login when it is still open. A pane remembers its qtty session. Press Enter in a disconnected pane to sign in again and return to that session. After a reload, panes with qtty sessions come back offline, ready to sign in.
+
+A long press on a terminal selects the word under the finger, and dragging extends the selection. Lifting the finger opens a small menu with Copy, Paste and Select all. Right-click opens the same menu on a desktop. When the browser blocks clipboard reads, Paste shows a field that accepts the system paste gesture.
+
+The connection dot opens a live 30-second traffic graph, per-session byte totals, connection age, and measured setup time. Keep the SSH connect and QR connect actions in that menu. The Share action in a pane header opens sharing for that terminal. It also lets either peer end an active share.
 
 A one-use QR invite expires after two minutes. The Share tab displays the PIN separately, and the Connect tab scans locally with camera permission or accepts a pasted link. The scanning peer can offer its own terminal or request the inviter’s. The inviter confirms after PIN verification, before the screen or keyboard input is shared. A shared terminal keeps the originating terminal’s dimensions and starts from its visible screen. Keep pending invites in memory and stop the camera when it has found an invite or the Connect tab closes.
 
