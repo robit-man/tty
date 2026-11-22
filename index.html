@@ -3169,6 +3169,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     term.open(content);
     wireTouchScroll(session);
     wireSelection(session);
+    wireDictation(session);
     inputLog?.watch(term.textarea);
     content.append(cursorLayer);
     wireSessionCursor(session);
@@ -3855,6 +3856,52 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     });
   }
 
+  // Phone dictation (iOS at least) rewrites the hidden input field as it
+  // refines: each insertText event replaces the field's text with the whole
+  // revised phrase. xterm forwards every phrase in full, so drafts pile up.
+  // The field's text is what the terminal has received during the current
+  // dictation, so a revision is sent as backspaces to the first change plus
+  // the new ending. Key presses never fill the field, so typing is unaffected.
+  function wireDictation(session) {
+    const field = session.term.textarea;
+    // Listen on the container in the capture phase so this runs before xterm's
+    // own listeners on the field in every browser.
+    const element = session.term.element;
+    const on = (type, handler) => element.addEventListener(type, event => {
+      if (event.target === field) handler(event);
+    }, true);
+    let sent = '', base = null;
+    const reset = () => {
+      sent = '';
+      base = null;
+      field.value = '';
+    };
+    on('beforeinput', event => {
+      base = event.inputType === 'insertText' && !event.isComposing ? field.value : null;
+    });
+    on('input', event => {
+      if (event.inputType !== 'insertText' || event.isComposing) return;
+      // Browsers that skip beforeinput leave the field as it was last sent.
+      const before = base ?? sent;
+      base = null;
+      // Only take over while the field matches what the terminal has.
+      if (before !== sent) {
+        if (before === '') sent = '';
+        else return;
+      }
+      event.stopPropagation();
+      const previous = Array.from(sent), next = Array.from(field.value);
+      let same = 0;
+      while (same < previous.length && same < next.length && previous[same] === next[same]) same++;
+      const edit = '\x7f'.repeat(previous.length - same) + next.slice(same).join('');
+      sent = field.value;
+      if (edit && !session.guestWrite) writeBytes(session, encoder.encode(edit));
+    });
+    // A key press or leaving the terminal ends the dictation run.
+    on('keydown', event => { if (!event.isComposing && event.keyCode !== 229) reset(); });
+    field.addEventListener('blur', reset);
+  }
+
   // Diagnostic log of keyboard and dictation events, for adapting input
   // handling to a phone's dictation. Open the page with #input-log to show
   // it. Entries contain what you typed or dictated and never leave the page
@@ -3868,8 +3915,8 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     if (!enabled) return null;
     const panel = document.createElement('section');
     panel.setAttribute('aria-label', 'Input event log');
-    panel.style.cssText = 'position:fixed;inset:auto 0 0 0;z-index:9;max-block-size:34vh;display:grid;'
-      + 'grid-template-rows:auto 1fr;background:#000;border-top:1px solid rgb(255 255 255 / .32);'
+    panel.style.cssText = 'position:fixed;inset:0 0 auto 0;z-index:9;max-block-size:22vh;display:grid;'
+      + 'grid-template-rows:auto 1fr;background:rgb(0 0 0 / .88);border-bottom:1px solid rgb(255 255 255 / .32);'
       + 'font:11px/1.35 ui-monospace,monospace;color:#d2d2d2';
     const bar = document.createElement('div');
     bar.style.cssText = 'display:flex;gap:6px;align-items:center;padding:4px 8px';
