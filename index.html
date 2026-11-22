@@ -152,7 +152,7 @@ button:not(:disabled):active { transform: scale(.96); }
   border-radius: 50%;
   background: #767676;
 }
-.status-dot[data-state="connecting"] { background: var(--pending); }
+.status-dot[data-state="connecting"], .status-dot[data-state="reconnecting"] { background: var(--pending); }
 .status-dot[data-state="online"] { background: var(--connected); }
 
 #workspace {
@@ -1608,6 +1608,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   const statusText = {
     offline: 'Disconnected',
     connecting: 'Connecting',
+    reconnecting: 'Reconnecting',
     online: 'Connected'
   };
 
@@ -2958,12 +2959,18 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   }
 
   function writeBytes(session, bytes) {
-    if (session.state !== 'online' || !bytes.length) return;
-    if (session.guest) {
+    if (!bytes.length) return;
+    if (session.state === 'reconnecting' && session.resume) {
+      // Queue keystrokes while the network changes; they're resent after resume.
+      trackInput(session, bytes);
+    } else if (session.state !== 'online') {
+      return;
+    } else if (session.guest) {
       if (!session.share?.permissions.write) return;
       sendSharedBytes(session.share, shareTypes.input, bytes);
     } else if (session.socket?.readyState === WebSocket.OPEN) {
       session.socket.send(bytes);
+      trackInput(session, bytes);
     } else {
       return;
     }
@@ -3076,6 +3083,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     term.loadAddon(fit);
     if (serializer) term.loadAddon(serializer);
     term.open(content);
+    wireTouchScroll(session);
     content.append(cursorLayer);
     wireSessionCursor(session);
     if (guest) term.onRender(() => sizeGuestFrame(session));
@@ -3142,8 +3150,293 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     return session;
   }
 
+  // A resumable session outlives its WebSocket. Moving between Wi-Fi and
+  // cellular kills the TCP path without a close frame, so heartbeats detect the
+  // dead link and a new socket resumes the same PTY. Output is counted by byte
+  // offset for replay; unacknowledged input is resent after the gateway reports
+  // how many bytes it received.
+  const resumeTiming = {ping: 5000, answer: 8000, probe: 3000, attempt: 8000, window: 15 * 60 * 1000};
+  const resumeInputLimit = 1 << 20;
+
+  function startResume(session, host, message) {
+    if (typeof message.session !== 'string' || typeof message.resume !== 'string') return;
+    session.resume = {
+      host, id: message.session, secret: message.resume, offset: 0,
+      pending: [], pendingBytes: 0, acked: 0, lastSeen: performance.now(), awaiting: 0, limit: resumeTiming.answer,
+      since: 0, attempt: 0, retry: 0, heartbeat: setInterval(() => heartbeat(session), 1000)
+    };
+  }
+
+  function stopResume(session) {
+    const resume = session.resume;
+    if (!resume) return;
+    session.resume = null;
+    clearInterval(resume.heartbeat);
+    clearTimeout(resume.retry);
+  }
+
+  function trackInput(session, bytes) {
+    const resume = session.resume;
+    if (!resume) return;
+    resume.pending.push(bytes.slice());
+    resume.pendingBytes += bytes.length;
+    while (resume.pendingBytes > resumeInputLimit && resume.pending.length > 1) {
+      const dropped = resume.pending.shift();
+      resume.pendingBytes -= dropped.length;
+      resume.acked += dropped.length;
+    }
+  }
+
+  function acknowledgeInput(session, received) {
+    const resume = session.resume;
+    if (!resume || !Number.isSafeInteger(received)) return;
+    while (resume.pending.length && received > resume.acked) {
+      const first = resume.pending[0];
+      const used = Math.min(first.length, received - resume.acked);
+      resume.acked += used;
+      resume.pendingBytes -= used;
+      if (used === first.length) resume.pending.shift();
+      else resume.pending[0] = first.subarray(used);
+    }
+  }
+
+  function sawTraffic(session) {
+    if (!session.resume) return;
+    session.resume.lastSeen = performance.now();
+    session.resume.awaiting = 0;
+  }
+
+  function heartbeat(session) {
+    const resume = session.resume, socket = session.socket;
+    if (!resume || session.state !== 'online' || socket?.readyState !== WebSocket.OPEN) return;
+    const now = performance.now();
+    if (resume.awaiting && now - resume.awaiting > resume.limit) {
+      linkLost(session);
+    } else if (!resume.awaiting && now - resume.lastSeen >= resumeTiming.ping) {
+      resume.awaiting = now;
+      resume.limit = resumeTiming.answer;
+      socket.send(JSON.stringify({type: 'ping'}));
+    }
+  }
+
+  // The network may have changed: ask for a quick answer instead of waiting.
+  function probeLinks() {
+    for (const session of sessions) {
+      const resume = session.resume;
+      if (!resume) continue;
+      if (session.state === 'reconnecting') {
+        clearTimeout(resume.retry);
+        resume.attempt = 0;
+        if (!session.socket) resumeSession(session);
+      } else if (session.state === 'online' && session.socket?.readyState === WebSocket.OPEN && !resume.awaiting) {
+        resume.awaiting = performance.now();
+        resume.limit = resumeTiming.probe;
+        session.socket.send(JSON.stringify({type: 'ping'}));
+      }
+    }
+  }
+
+  function detachSocket(session) {
+    const socket = session.socket;
+    session.socket = null;
+    if (!socket) return;
+    socket.onopen = socket.onmessage = socket.onclose = socket.onerror = null;
+    // A plain close leaves the gateway's PTY waiting for this tab to return.
+    try { if (socket.readyState < WebSocket.CLOSING) socket.close(); } catch (_) {}
+  }
+
+  function linkLost(session) {
+    const resume = session.resume;
+    detachSocket(session);
+    if (session.state !== 'reconnecting') {
+      session.state = 'reconnecting';
+      resume.since = performance.now();
+      resume.attempt = 0;
+      updateStatus();
+      if (session === active) live('Session ' + session.id + ' is reconnecting.');
+    }
+    scheduleResume(session);
+  }
+
+  function scheduleResume(session) {
+    const resume = session.resume;
+    clearTimeout(resume.retry);
+    if (performance.now() - resume.since > resumeTiming.window) {
+      finishResume(session, 'Session disconnected.');
+      return;
+    }
+    const delay = navigator.onLine === false ? 5000 : Math.min(5000, resume.attempt ? 250 * 2 ** resume.attempt : 0);
+    resume.attempt++;
+    resume.retry = setTimeout(() => resumeSession(session), delay);
+  }
+
+  function finishResume(session, message) {
+    endSocket(session);
+    session.term.writeln('\r\n' + message);
+    updateStatus();
+    if (session === active) {
+      clearModifiers();
+      updateViewport();
+      live('Session ' + session.id + ' disconnected.');
+    }
+  }
+
+  function receiveOutput(session, data) {
+    const bytes = new Uint8Array(data);
+    if (session.resume) session.resume.offset += bytes.length;
+    recordTraffic(session, 'rx', bytes.length);
+    for (const flow of session.shares) mirrorShareOutput(flow, bytes);
+    session.term.write(bytes);
+  }
+
+  function resumeSession(session) {
+    const resume = session.resume;
+    if (!resume || session.state !== 'reconnecting' || session.socket) return;
+    let socket;
+    try {
+      socket = new WebSocket('wss://' + resume.host + '/ws');
+    } catch (_) {
+      scheduleResume(session);
+      return;
+    }
+    session.socket = socket;
+    socket.binaryType = 'arraybuffer';
+    const timer = setTimeout(() => {
+      if (session.socket !== socket) return;
+      detachSocket(session);
+      scheduleResume(session);
+    }, resumeTiming.attempt);
+    socket.onopen = () => {
+      if (visiblePanes.has(session)) session.fit.fit();
+      const {cols, rows} = session.term;
+      session.lastSize = cols + 'x' + rows;
+      socket.send(JSON.stringify({
+        type: 'resume', v: 1, session: resume.id, resume: resume.secret, offset: resume.offset, cols, rows
+      }));
+    };
+    socket.onmessage = ({data}) => {
+      if (session.socket !== socket) return;
+      sawTraffic(session);
+      if (data instanceof ArrayBuffer) {
+        if (session.state === 'online') receiveOutput(session, data);
+        return;
+      }
+      let message;
+      try { message = JSON.parse(data); } catch (_) { return; }
+      if (message?.type === 'resumed' && session.state === 'reconnecting') {
+        clearTimeout(timer);
+        if (Number.isSafeInteger(message.offset) && message.offset > resume.offset) {
+          session.term.write('\r\n\x1b[2m[Some output was lost while offline]\x1b[0m\r\n');
+          resume.offset = message.offset;
+        }
+        acknowledgeInput(session, message.in);
+        for (const bytes of resume.pending) socket.send(bytes);
+        session.state = 'online';
+        resume.attempt = 0;
+        updateStatus();
+        if (session === active) live('Session ' + session.id + ' reconnected.');
+        fitTerminal(session);
+      } else if (message?.type === 'error' && session.state === 'reconnecting') {
+        clearTimeout(timer);
+        if (message.code === 'expired') finishResume(session, 'The session expired while offline.');
+        else { detachSocket(session); scheduleResume(session); }
+      } else {
+        handleControl(session, socket, message);
+      }
+    };
+    socket.onclose = event => {
+      if (session.socket !== socket) return;
+      clearTimeout(timer);
+      if (session.state === 'online') closedOnline(session, event);
+      else { session.socket = null; scheduleResume(session); }
+    };
+  }
+
+  // Shared handling for an attached socket's control messages.
+  function handleControl(session, socket, message) {
+    if (message?.type === 'pong') {
+      acknowledgeInput(session, message.in);
+    } else if (message?.type === 'closed') {
+      session.ended = true;
+      socket.close(1000, 'Session ended');
+    }
+  }
+
+  function closedOnline(session, {code, reason}) {
+    if (session.resume && !session.ended && code !== 1000 && code !== 4000) {
+      linkLost(session);
+      return;
+    }
+    const message = reason === 'Ended by tunnel owner' ? 'The tunnel owner ended this session.'
+      : session.ended ? 'Session ended.' : 'Session disconnected.';
+    finishResume(session, message);
+  }
+
+  // Closing a pane mid-reconnect still releases its PTY on the gateway.
+  function sendGoodbye(session) {
+    const {host, id, secret, offset} = session.resume;
+    const {cols, rows} = session.term;
+    try {
+      const socket = new WebSocket('wss://' + host + '/ws');
+      socket.onopen = () => {
+        socket.send(JSON.stringify({type: 'resume', v: 1, session: id, resume: secret, offset, cols, rows}));
+        socket.send(JSON.stringify({type: 'bye'}));
+      };
+      socket.onmessage = () => socket.close();
+      setTimeout(() => socket.close(), 5000);
+    } catch (_) {}
+  }
+
+  // Two-finger drags become wheel events, so xterm treats them exactly like a
+  // desktop wheel or trackpad: mouse-wheel reports when the program tracks the
+  // mouse (Claude Code, Codex, vim, less), arrow keys in an alternate screen
+  // without mouse tracking, and local scrollback otherwise.
+  function wireTouchScroll(session) {
+    const element = session.term.element;
+    const screen = element.querySelector('.xterm-screen') || element;
+    let last = null;
+    const midpoint = touches => ({
+      x: (touches[0].clientX + touches[1].clientX) / 2,
+      y: (touches[0].clientY + touches[1].clientY) / 2
+    });
+    element.addEventListener('touchstart', event => {
+      last = event.touches.length === 2 ? midpoint(event.touches) : null;
+    }, {passive: true, capture: true});
+    element.addEventListener('touchmove', event => {
+      if (event.touches.length !== 2 || !last) return;
+      // Keep xterm's one-finger viewport scroll and the page from also moving.
+      event.preventDefault();
+      event.stopPropagation();
+      const point = midpoint(event.touches);
+      const deltaY = last.y - point.y, deltaX = last.x - point.x;
+      last = point;
+      if (!deltaY) return;
+      screen.dispatchEvent(new WheelEvent('wheel', {
+        deltaX, deltaY, deltaMode: WheelEvent.DOM_DELTA_PIXEL, clientX: point.x, clientY: point.y,
+        bubbles: true, cancelable: true
+      }));
+    }, {passive: false, capture: true});
+    for (const type of ['touchend', 'touchcancel']) {
+      element.addEventListener(type, event => {
+        if (event.touches.length !== 2) last = null;
+      }, {passive: true, capture: true});
+    }
+  }
+
+  addEventListener('online', probeLinks);
+  navigator.connection?.addEventListener?.('change', probeLinks);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') probeLinks(); });
+  addEventListener('pageshow', probeLinks);
+
   function endSocket(session) {
     const socket = session.socket;
+    if (session.resume && socket?.readyState === WebSocket.OPEN) {
+      // Tell the gateway this is a deliberate disconnect, not a network change.
+      try { socket.send(JSON.stringify({type: 'bye'})); } catch (_) {}
+    } else if (session.resume) {
+      sendGoodbye(session);
+    }
+    stopResume(session);
     session.socket = null;
     clearTimeout(session.timer);
     session.state = 'offline';
@@ -3271,6 +3564,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     const recentLink = 'https://' + destination.host + '/#tty=' + destination.token;
     view.pending = session;
     session.state = 'connecting';
+    session.ended = false;
     session.stats = {rx: 0, tx: 0};
     const started = performance.now();
     updateStatus();
@@ -3297,23 +3591,18 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     session.socket = socket;
     socket.binaryType = 'arraybuffer';
     session.timer = setTimeout(() => failed('Connection timed out. Check that the browser tunnel is running.'), 20000);
-    let ended = false;
     socket.onopen = () => {
       if (session.socket !== socket) return;
       fitTerminal();
       const {cols, rows} = session.term;
-      socket.send(JSON.stringify({type: 'hello', v: 1, token: destination.token, user, cols, rows}));
+      socket.send(JSON.stringify({type: 'hello', v: 1, token: destination.token, user, cols, rows, resume: true}));
       destination.token = '';
     };
     socket.onmessage = ({data}) => {
       if (session.socket !== socket) return;
+      sawTraffic(session);
       if (data instanceof ArrayBuffer) {
-        if (session.state === 'online') {
-          const bytes = new Uint8Array(data);
-          recordTraffic(session, 'rx', bytes.length);
-          for (const flow of session.shares) mirrorShareOutput(flow, bytes);
-          session.term.write(bytes);
-        }
+        if (session.state === 'online') receiveOutput(session, data);
         return;
       }
       let message;
@@ -3326,6 +3615,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
           nextSession++;
         }
         session.state = 'online';
+        startResume(session, destination.host, message);
         session.stats.started = performance.now();
         session.stats.handshake = session.stats.started - started;
         session.term.reset();
@@ -3339,27 +3629,17 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
         dismissConnect(true);
       } else if (message?.type === 'error' && session.state === 'connecting') {
         failed(typeof message.message === 'string' ? message.message.slice(0, 200) : 'The gateway rejected the connection.');
-      } else if (message?.type === 'closed') {
-        ended = true;
-        socket.close(1000, 'Session ended');
+      } else {
+        handleControl(session, socket, message);
       }
     };
-    socket.onclose = ({reason}) => {
+    socket.onclose = event => {
       if (session.socket !== socket) return;
       if (session.state === 'connecting') {
         failed('Couldn’t reach the terminal. Check the link and browser tunnel mode.');
         return;
       }
-      endSocket(session);
-      const message = reason === 'Ended by tunnel owner' ? 'The tunnel owner ended this session.'
-        : ended ? 'Session ended.' : 'Session disconnected.';
-      session.term.writeln('\r\n' + message);
-      updateStatus();
-      if (session === active) {
-        clearModifiers();
-        updateViewport();
-        live('Session ' + session.id + ' disconnected.');
-      }
+      closedOnline(session, event);
     };
   }
 
