@@ -482,6 +482,31 @@ dialog::backdrop { background: transparent; }
 .modal-button { position: relative; font-weight: 550; }
 .modal-button:hover:not(:disabled) { background: var(--selected); }
 .modal-button:disabled:not([aria-busy="true"]) { opacity: .46; }
+#install-tray { inline-size: auto; padding-inline: 10px; font-size: .8125rem; }
+#install-from-connect { background: transparent; color: var(--muted); font-size: .875rem; }
+#install-from-connect:hover { background: var(--hover); color: var(--text); }
+#install-dialog .modal-panel { inline-size: min(100%, 390px); }
+#install-dialog h1, #install-dialog h2, #install-dialog p { margin: 0; }
+#install-dialog h1 { font-size: 1rem; }
+#install-dialog h2 { font-size: .8125rem; font-weight: 600; }
+#install-dialog p { color: var(--muted); font-size: .8125rem; }
+.install-platform { display: grid; gap: 6px; padding-block: 7px; border-block-start: 1px solid var(--edge); }
+.install-download {
+  display: flex;
+  min-block-size: var(--control-height);
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+  font-size: .875rem;
+}
+.install-download:hover, .install-download:active { background: var(--selected); }
+.install-download span:last-child { color: var(--muted); font: .75rem ui-monospace, monospace; }
 .modal-button.primary {
   background: var(--hover);
   border-color: var(--edge-strong);
@@ -837,6 +862,8 @@ dialog::backdrop { background: transparent; }
         aria-haspopup="dialog" aria-controls="connect-dialog" title="New session">
       <svg class="control-icon" viewBox="0 0 16 16" aria-hidden="true"><use href="#icon-plus" /></svg>
     </button>
+    <button id="install-tray" class="icon-button" type="button" aria-haspopup="dialog"
+        aria-controls="install-dialog" title="Install Cloudflare Quick Tunnel Tray">Install</button>
     <button id="session-status" class="icon-button" type="button" aria-label="Disconnected. Open connection statistics"
         aria-controls="connection-menu" aria-expanded="false" title="Disconnected">
       <span class="status-dot" aria-hidden="true"></span>
@@ -925,7 +952,31 @@ dialog::backdrop { background: transparent; }
     <button id="connect" class="modal-button primary" type="submit" disabled>
       <span id="connect-label"><span id="spinner" class="spinner" aria-hidden="true" hidden></span><span id="connect-text">Connect</span></span>
     </button>
+    <button id="install-from-connect" class="modal-button" type="button" aria-haspopup="dialog"
+        aria-controls="install-dialog">Install tray</button>
   </form>
+</dialog>
+<dialog id="install-dialog" aria-labelledby="install-heading" aria-describedby="install-detail">
+  <section class="modal-panel" tabindex="-1" autofocus>
+    <h1 id="install-heading">Install Cloudflare Quick Tunnel Tray</h1>
+    <p id="install-detail">Install the tray on the computer you want to connect to.</p>
+    <section class="install-platform" aria-labelledby="install-macos">
+      <h2 id="install-macos">macOS</h2>
+      <a class="install-download" href="https://github.com/robit-man/cloudflared-quick-tunnel-tray/releases/latest/download/quick-tunnel-tray-macos-arm64.dmg" download><span>macOS · Apple silicon</span><span>.dmg</span></a>
+      <a class="install-download" href="https://github.com/robit-man/cloudflared-quick-tunnel-tray/releases/latest/download/quick-tunnel-tray-macos-amd64.dmg" download><span>macOS · Intel</span><span>.dmg</span></a>
+    </section>
+    <section class="install-platform" aria-labelledby="install-windows">
+      <h2 id="install-windows">Windows</h2>
+      <a class="install-download" href="https://github.com/robit-man/cloudflared-quick-tunnel-tray/releases/latest/download/quick-tunnel-tray-windows-amd64.exe" download><span>Windows · x64</span><span>.exe</span></a>
+      <p>Browser Terminal uses SSH inside WSL 2.</p>
+    </section>
+    <section class="install-platform" aria-labelledby="install-linux">
+      <h2 id="install-linux">Debian / Ubuntu</h2>
+      <a class="install-download" href="https://github.com/robit-man/cloudflared-quick-tunnel-tray/releases/latest/download/quick-tunnel-tray-linux-amd64.deb" download><span>Debian / Ubuntu · x64</span><span>.deb</span></a>
+      <a class="install-download" href="https://github.com/robit-man/cloudflared-quick-tunnel-tray/releases/latest/download/quick-tunnel-tray-linux-arm64.deb" download><span>Debian / Ubuntu · ARM64</span><span>.deb</span></a>
+    </section>
+    <button id="install-close" class="modal-button" type="button">Close</button>
+  </section>
 </dialog>
 <dialog id="close-dialog" aria-labelledby="close-heading" aria-describedby="close-detail">
   <div class="modal-panel">
@@ -1647,6 +1698,163 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
 </script>
 <script>
 (() => {
+  // Noise rev. 34 NNpsk0, X25519/AES-GCM/SHA-256. Only empty handshake payloads.
+  const protocol = new TextEncoder().encode('Noise_NNpsk0_25519_AESGCM_SHA256');
+  const prologue = new TextEncoder().encode('tty-websocket-v2');
+  const empty = new Uint8Array();
+  const maxPayload = 65535 - 17;
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder('utf-8', {fatal: true});
+  const join = (a, b) => {
+    const result = new Uint8Array(a.length + b.length);
+    result.set(a);
+    result.set(b, a.length);
+    return result;
+  };
+  const mixHash = async (hash, data) => new Uint8Array(await crypto.subtle.digest('SHA-256', join(hash, data)));
+  const importCipher = (raw, usage) => crypto.subtle.importKey('raw', raw, 'AES-GCM', false, [usage]);
+
+  async function hkdf(chain, material, count) {
+    // RFC 5869 with empty info. Web Crypto HMAC also accepts Noise Split's empty IKM.
+    const hmac = raw => crypto.subtle.importKey('raw', raw, {name: 'HMAC', hash: 'SHA-256'}, false, ['sign']);
+    const prk = await crypto.subtle.sign('HMAC', await hmac(chain), material);
+    const key = await hmac(prk);
+    const output = [];
+    let previous = empty;
+    for (let index = 1; index <= count; index++) {
+      previous = new Uint8Array(await crypto.subtle.sign('HMAC', key, join(previous, Uint8Array.of(index))));
+      output.push(previous);
+    }
+    return output;
+  }
+
+  function cipher(sequence = 0, additionalData = empty) {
+    const iv = new Uint8Array(12);
+    if (sequence >= 2 ** 32) throw new Error('Noise record limit reached');
+    new DataView(iv.buffer).setUint32(8, sequence);
+    return {name: 'AES-GCM', iv, additionalData};
+  }
+
+  async function initiate(secret) {
+    const psk = Uint8Array.from(atob(secret.replace(/-/g, '+').replace(/_/g, '/') + '='), char => char.charCodeAt(0));
+    const initial = new Uint8Array(32);
+    initial.set(protocol);
+    let hash = await mixHash(initial, prologue);
+    let [chain, pskHash] = await hkdf(initial, psk, 3);
+    hash = await mixHash(hash, pskHash);
+    const ephemeral = await crypto.subtle.generateKey('X25519', false, ['deriveBits']);
+    const publicKey = new Uint8Array(await crypto.subtle.exportKey('raw', ephemeral.publicKey));
+    hash = await mixHash(hash, publicKey);
+    let key;
+    [chain, key] = await hkdf(chain, publicKey, 2);
+    const tag = new Uint8Array(await crypto.subtle.encrypt(cipher(0, hash), await importCipher(key, 'encrypt'), empty));
+    hash = await mixHash(hash, tag);
+
+    return {
+      message: join(publicKey, tag),
+      async finish(frame) {
+        if (!(frame instanceof ArrayBuffer) || frame.byteLength !== 48) throw new Error('Invalid Noise reply');
+        const reply = new Uint8Array(frame);
+        const peerKey = reply.subarray(0, 32);
+        hash = await mixHash(hash, peerKey);
+        [chain] = await hkdf(chain, peerKey, 2);
+        const publicPeer = await crypto.subtle.importKey('raw', peerKey, 'X25519', false, []);
+        const shared = await crypto.subtle.deriveBits({name: 'X25519', public: publicPeer}, ephemeral.privateKey, 256);
+        [chain, key] = await hkdf(chain, shared, 2);
+        await crypto.subtle.decrypt(cipher(0, hash), await importCipher(key, 'decrypt'), reply.subarray(32));
+        const [outgoing, incoming] = await hkdf(chain, empty, 2);
+        return Promise.all([importCipher(outgoing, 'encrypt'), importCipher(incoming, 'decrypt')]);
+      }
+    };
+  }
+
+  class TerminalSocket {
+    constructor(host, secret) {
+      if (!crypto.subtle) throw new Error('Open TTY on HTTPS to use encrypted terminals.');
+      this.wire = new WebSocket('wss://' + host + '/ws/v2');
+      this.wire.binaryType = 'arraybuffer';
+      this.receiving = Promise.resolve();
+      this.sending = Promise.resolve();
+      this.readSequence = 0;
+      this.writeSequence = 0;
+      this.queued = 0;
+      this.wire.onopen = async () => {
+        try {
+          this.handshake = await initiate(secret);
+          secret = '';
+          if (!this.closing && this.wire.readyState === WebSocket.OPEN) this.wire.send(this.handshake.message);
+        } catch (_) {
+          this.fail('This browser could not start an encrypted connection. Try updating your browser.');
+        }
+      };
+      this.wire.onmessage = ({data}) => {
+        this.queued += data.byteLength || data.length || 0;
+        if (this.queued > 16 * 1024 * 1024) {
+          this.fail('The terminal sent data faster than this browser could process it.');
+          return;
+        }
+        this.receiving = this.receiving.then(async () => {
+          if (this.closing) return;
+          if (!this.incoming) {
+            [this.outgoing, this.incoming] = await this.handshake.finish(data);
+            this.handshake = null;
+            if (!this.closing) this.onopen?.();
+            return;
+          }
+          if (!(data instanceof ArrayBuffer) || data.byteLength < 17 || data.byteLength > 65535) {
+            throw new Error('Invalid Noise frame');
+          }
+          const body = new Uint8Array(await crypto.subtle.decrypt(cipher(this.readSequence++), this.incoming, data));
+          if (body[0] !== 0 && body[0] !== 1) throw new Error('Invalid Noise message type');
+          if (!this.closing) this.onmessage?.({data: body[0] === 0 ? decoder.decode(body.subarray(1)) : body.buffer.slice(1)});
+        }).catch(() => {
+          this.fail('Couldn’t verify the encrypted terminal connection. Copy a fresh link from the tray.');
+        }).finally(() => { this.queued -= data.byteLength || data.length || 0; });
+      };
+      this.wire.onerror = () => this.onerror?.();
+      this.wire.onclose = async () => {
+        await this.receiving;
+        this.onclose?.({secureError: this.secureError});
+      };
+    }
+
+    get readyState() {
+      if (this.closing || this.wire.readyState >= WebSocket.CLOSING) return WebSocket.CLOSING;
+      return this.incoming ? WebSocket.OPEN : WebSocket.CONNECTING;
+    }
+
+    send(message) {
+      if (this.readyState !== WebSocket.OPEN) return;
+      const text = typeof message === 'string';
+      const bytes = text ? encoder.encode(message) : message;
+      this.sending = this.sending.then(async () => {
+        for (let start = 0; start < Math.max(1, bytes.length); start += maxPayload) {
+          if (this.wire.readyState !== WebSocket.OPEN) return;
+          const body = join(Uint8Array.of(text ? 0 : 1), bytes.subarray(start, start + maxPayload));
+          const frame = await crypto.subtle.encrypt(cipher(this.writeSequence++), this.outgoing, body);
+          if (this.wire.readyState === WebSocket.OPEN) this.wire.send(frame);
+        }
+      }).catch(() => this.fail('The encrypted terminal connection was interrupted.'));
+    }
+
+    close(code = 1000) {
+      if (this.closing) return;
+      this.closing = true;
+      if (!this.outgoing) this.wire.close(code);
+      else this.sending.finally(() => this.wire.close(code));
+    }
+
+    fail(message) {
+      this.secureError = message;
+      this.closing = true;
+      this.wire.close(4002);
+    }
+  }
+  window.TTYTerminalSocket = TerminalSocket;
+})();
+</script>
+<script>
+(() => {
   'use strict';
 
   const $ = id => document.getElementById(id);
@@ -1666,6 +1874,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   const addButton = $('add-session');
   const connectDialog = $('connect-dialog');
   const closeDialog = $('close-dialog');
+  const installDialog = $('install-dialog');
   const form = $('connect-form');
   const endpoint = $('endpoint');
   const username = $('username');
@@ -1683,7 +1892,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   const dividerSize = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--divider-size'));
   const sshUser = /^[A-Za-z_][A-Za-z0-9_.-]{0,63}$/;
   const tunnelHost = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.trycloudflare\.com$/;
-  const tunnelToken = /^[A-Za-z0-9_-]{32,128}$/;
+  const tunnelToken = /^v2\.[A-Za-z0-9_-]{43}$/;
   const recentKey = 'tty-recent-sessions';
   const recentLimit = 8;
   const sessions = [];
@@ -2619,8 +2828,8 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
       if (!['https:', 'wss:'].includes(url.protocol) || url.port || url.username || url.password) return null;
       if (!tunnelHost.test(url.hostname)) return null;
       const fragment = new URLSearchParams(url.hash.slice(1));
-      const token = fragment.get('tty') || fragment.get('token') || '';
-      return tunnelToken.test(token) ? {host: url.hostname, token} : null;
+      const token = fragment.get('tty') || '';
+      return tunnelToken.test(token) ? {host: url.hostname, token: token.slice(3)} : null;
     } catch (_) {
       return null;
     }
@@ -3352,7 +3561,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
       if (parent.host) prefillLink(parent);
       return;
     }
-    const {host, id, secret} = parent.resume;
+    const {host, key, id, secret} = parent.resume;
     const session = addSession(parent.user, host, visiblePanes.has(parent) ? placement : null);
     nextSession++;
     session.forkFrom = from;
@@ -3370,7 +3579,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
       updateStatus();
     };
     try {
-      socket = new WebSocket('wss://' + host + '/ws');
+      socket = new window.TTYTerminalSocket(host, key);
     } catch (_) {
       session.socket = null;
       session.state = 'offline';
@@ -3380,7 +3589,6 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
       return;
     }
     session.socket = socket;
-    socket.binaryType = 'arraybuffer';
     session.timer = setTimeout(() => fail('The new terminal didn’t open in time.'), 20000);
     socket.onopen = () => {
       if (session.socket !== socket) return;
@@ -3401,7 +3609,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
       if (message?.type === 'ready' && session.state === 'connecting') {
         clearTimeout(session.timer);
         session.state = 'online';
-        startResume(session, host, message);
+        startResume(session, host, key, message);
         session.stats.started = performance.now();
         session.stats.handshake = session.stats.started - started;
         session.term.reset();
@@ -3416,8 +3624,8 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     };
     socket.onclose = event => {
       if (session.socket !== socket) return;
-      if (session.state === 'connecting') fail('The new terminal closed before it opened.');
-      else closedOnline(session, event);
+      if (session.state === 'connecting') fail(event.secureError || 'The new terminal closed before it opened.');
+      else closedOnline(session);
     };
   }
 
@@ -3432,10 +3640,10 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   const resumeTiming = {ping: 5000, answer: 8000, probe: 3000, attempt: 8000, window: 15 * 60 * 1000};
   const resumeInputLimit = 1 << 20;
 
-  function startResume(session, host, message) {
+  function startResume(session, host, key, message) {
     if (typeof message.session !== 'string' || typeof message.resume !== 'string') return;
     session.resume = {
-      host, id: message.session, secret: message.resume, offset: 0,
+      host, key, id: message.session, secret: message.resume, offset: 0,
       pending: [], pendingBytes: 0, acked: 0, lastSeen: performance.now(), awaiting: 0, limit: resumeTiming.answer,
       since: 0, attempt: 0, retry: 0, heartbeat: setInterval(() => heartbeat(session), 1000)
     };
@@ -3569,13 +3777,12 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     if (!resume || session.state !== 'reconnecting' || session.socket) return;
     let socket;
     try {
-      socket = new WebSocket('wss://' + resume.host + '/ws');
+      socket = new window.TTYTerminalSocket(resume.host, resume.key);
     } catch (_) {
       scheduleResume(session);
       return;
     }
     session.socket = socket;
-    socket.binaryType = 'arraybuffer';
     const timer = setTimeout(() => {
       if (session.socket !== socket) return;
       detachSocket(session);
@@ -3619,10 +3826,10 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
         handleControl(session, socket, message);
       }
     };
-    socket.onclose = event => {
+    socket.onclose = () => {
       if (session.socket !== socket) return;
       clearTimeout(timer);
-      if (session.state === 'online') closedOnline(session, event);
+      if (session.state === 'online') closedOnline(session);
       else { session.socket = null; scheduleResume(session); }
     };
   }
@@ -3632,27 +3839,26 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     if (message?.type === 'pong') {
       acknowledgeInput(session, message.in);
     } else if (message?.type === 'closed') {
-      session.ended = true;
-      socket.close(1000, 'Session ended');
+      session.ended = message.message === 'Ended by tunnel owner'
+        ? 'The tunnel owner ended this session.' : 'Session ended.';
+      socket.close();
     }
   }
 
-  function closedOnline(session, {code, reason}) {
-    if (session.resume && !session.ended && code !== 1000 && code !== 4000) {
+  function closedOnline(session) {
+    if (session.resume && !session.ended) {
       linkLost(session);
       return;
     }
-    const message = reason === 'Ended by tunnel owner' ? 'The tunnel owner ended this session.'
-      : session.ended ? 'Session ended.' : 'Session disconnected.';
-    finishResume(session, message);
+    finishResume(session, session.ended || 'Session disconnected.');
   }
 
   // Closing a pane mid-reconnect still releases its PTY on the gateway.
   function sendGoodbye(session) {
-    const {host, id, secret, offset} = session.resume;
+    const {host, key, id, secret, offset} = session.resume;
     const {cols, rows} = session.term;
     try {
-      const socket = new WebSocket('wss://' + host + '/ws');
+      const socket = new window.TTYTerminalSocket(host, key);
       socket.onopen = () => {
         socket.send(JSON.stringify({type: 'resume', v: 1, session: id, resume: secret, offset, cols, rows}));
         socket.send(JSON.stringify({type: 'bye'}));
@@ -4241,10 +4447,10 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
 
   function endSocket(session) {
     const socket = session.socket;
-    if (session.resume && socket?.readyState === WebSocket.OPEN) {
+    if (!session.ended && session.resume && socket?.readyState === WebSocket.OPEN) {
       // Tell the gateway this is a deliberate disconnect, not a network change.
       try { socket.send(JSON.stringify({type: 'bye'})); } catch (_) {}
-    } else if (session.resume) {
+    } else if (!session.ended && session.resume) {
       sendGoodbye(session);
     }
     stopResume(session);
@@ -4334,7 +4540,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   }
 
   function openConnect(reuse = null, focus = true, placement = null, fork = null) {
-    if (connectDialog.open || closeDialog.open || shareDialog.open) return;
+    if (connectDialog.open || closeDialog.open || shareDialog.open || installDialog.open) return;
     showStats(false);
     intake = {reuse, placement, previous: active, previousLayout: paneLayout, pending: null, fork};
     connectAnchor = null;
@@ -4375,7 +4581,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   function startConnect(destination, user) {
     const view = intake;
     const session = view.reuse || addSession(user, destination.host, view.placement);
-    const recentLink = 'https://' + destination.host + '/#tty=' + destination.token;
+    const recentLink = 'https://' + destination.host + '/#tty=v2.' + destination.token;
     view.pending = session;
     session.state = 'connecting';
     session.ended = false;
@@ -4396,14 +4602,12 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
 
     let socket;
     try {
-      // The fragment is sent in the hello frame, never in the request URL.
-      socket = new WebSocket('wss://' + destination.host + '/ws');
+      socket = new window.TTYTerminalSocket(destination.host, destination.token);
     } catch (_) {
       failed('Couldn’t open the WebSocket. Check the browser terminal link.');
       return;
     }
     session.socket = socket;
-    socket.binaryType = 'arraybuffer';
     session.timer = setTimeout(() => failed('Connection timed out. Check that the browser tunnel is running.'), 20000);
     socket.onopen = () => {
       if (session.socket !== socket) return;
@@ -4411,8 +4615,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
       const {cols, rows} = session.term;
       const fork = view.fork || view.reuse?.forkFrom;
       const attach = view.reuse?.qtty ? {attach: view.reuse.qtty} : fork ? {fork} : {};
-      socket.send(JSON.stringify({type: 'hello', v: 1, token: destination.token, user, cols, rows, resume: true, ...attach}));
-      destination.token = '';
+      socket.send(JSON.stringify({type: 'hello', v: 1, user, cols, rows, resume: true, ...attach}));
     };
     socket.onmessage = ({data}) => {
       if (session.socket !== socket) return;
@@ -4431,7 +4634,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
           nextSession++;
         }
         session.state = 'online';
-        startResume(session, destination.host, message);
+        startResume(session, destination.host, destination.token, message);
         session.stats.started = performance.now();
         session.stats.handshake = session.stats.started - started;
         session.term.reset();
@@ -4452,10 +4655,10 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     socket.onclose = event => {
       if (session.socket !== socket) return;
       if (session.state === 'connecting') {
-        failed('Couldn’t reach the terminal. Check the link and browser tunnel mode.');
+        failed(event.secureError || 'Couldn’t open the encrypted terminal. Check that the tray is up to date and copy a fresh link.');
         return;
       }
-      closedOnline(session, event);
+      closedOnline(session);
     };
   }
 
@@ -4482,7 +4685,8 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     app.dataset.keyboard = String(keyboardOpen);
     softKeys.hidden = !(keyboardOpen && active?.state === 'online'
       && (!active.guest || active.share?.permissions.write)
-      && document.activeElement === active.term.textarea && !connectDialog.open && !closeDialog.open && !shareDialog.open);
+      && document.activeElement === active.term.textarea && !connectDialog.open && !closeDialog.open
+      && !shareDialog.open && !installDialog.open);
     positionConnectPanel();
     positionFontMenu();
   }
@@ -4606,6 +4810,15 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
 
   dismissOnOutside(connectDialog, () => dismissConnect());
   dismissOnOutside(closeDialog, dismissClose);
+  dismissOnOutside(installDialog, () => hideDialog(installDialog));
+  $('install-close').addEventListener('click', () => hideDialog(installDialog));
+  for (const id of ['install-tray', 'install-from-connect']) {
+    $(id).addEventListener('click', () => {
+      showStats(false);
+      showDialog(installDialog);
+      installDialog.scrollTop = 0;
+    });
+  }
   sidebarToggle.addEventListener('click', () => toggleSidebar(!sidebarOpen));
   addButton.addEventListener('click', () => openConnect());
   addButton.addEventListener('pointerdown', event => beginDrag(event, null));
@@ -4675,7 +4888,8 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
     }
   }, true);
   form.addEventListener('input', () => {
-    reportConnectError('');
+    const legacyLink = /#(?:tty|token)=[A-Za-z0-9_-]{32,128}$/.test(endpoint.value.trim());
+    reportConnectError(legacyLink ? 'Update the tray and copy a fresh encrypted terminal link.' : '');
     renderForm();
   });
   form.addEventListener('submit', event => {
@@ -4729,6 +4943,7 @@ WARNING: This link could potentially be dangerous`)){const s=window.open();if(s)
   }
 
   async function showInviteLink(inviteLink) {
+    if (installDialog.open) await hideDialog(installDialog);
     if (connectDialog.open) await dismissConnect();
     if (closeDialog.open) await dismissClose();
     if (shareDialog.open) await dismissSharing(false);
