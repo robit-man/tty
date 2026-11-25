@@ -1,6 +1,6 @@
 # TTY
 
-TTY is a browser SSH terminal for [Cloudflare Quick Tunnel Tray](https://github.com/robit-man/cloudflared-quick-tunnel-tray). Open the [hosted TTY](https://robit-man.github.io/tty/) and choose **Install** to download the tray for your host computer.
+TTY is a browser SSH terminal for [Cloudflare Quick Tunnel Tray](https://github.com/robit-man/cloudflared-quick-tunnel-tray). Open the [hosted TTY](https://robit-man.github.io/tty/) and select the download icon to install the tray on your host computer.
 
 Start **Browser Terminal** in tray version 2.0 or later, then copy its full link and paste it into TTY. The versioned link contains a secret after `#tty=v2.`. Treat it like a password and share it through a trusted channel. If you upgrade from an older tray, cycle the tunnel and copy a new link.
 
